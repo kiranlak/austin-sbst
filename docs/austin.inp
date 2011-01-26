@@ -1,0 +1,24 @@
+# austin.inp
+# Austin configuration file
+
+# Adequacy Criterion
+tdgCriterion = branch
+
+# Search Method (possible values are: random,chc)
+tdgSearchMethod = chc
+
+# Log
+logLevel = verbose
+logToScreen = true
+logCsvResults = true
+logTestCases = false
+
+# path to folder where x86.c or x86_64.c reside
+austinLib = /home/kiran/workspace/austin/x86/
+
+# Output Base Dir
+austinOut = .
+
+#compiler
+# compilerIncludes = -I .
+
