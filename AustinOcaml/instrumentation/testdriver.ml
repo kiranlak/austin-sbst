@@ -153,6 +153,22 @@ let makeAustinPtrCall (l:lval) (argSize : exp) (argProc : exp) (argAddr : exp) (
 	Hashtbl.replace prototypes f.svar.vname f;
 	Call(Some(l), Lval((var f.svar)), [argSize;argProc;argAddr;argFunc], locUnknown)
 
+let rec hasVarConstAttr (v:varinfo) = 
+	if (hasAttribute "const" v.vattr) then true
+	else (hasTypeConstAttr v.vtype)
+and hasTypeConstAttr (t:typ) = 
+	match t with
+		| TVoid(attr) | TInt(_,attr) | TFloat(_,attr) |  TFun(_,_,_,attr) | TComp(_,attr) | TEnum(_,attr) | TBuiltin_va_list(attr) ->  (hasAttribute "const" attr)
+		| TArray(at,_,attr) -> 
+			if (hasAttribute "const" attr) then true 
+			else (hasTypeConstAttr at) 
+		| TPtr(pt,attr) -> 
+			if (hasAttribute "const" attr) then true 
+			else (hasTypeConstAttr pt) 
+		| TNamed(ti,attr) -> 
+			if (hasAttribute "const" attr) then true 
+			else (hasTypeConstAttr ti.ttype)
+
 let rec generatePointer (pt:typ) (tt:typ) (l:lval) (source:file) = 
 	let funcName = typeToString "Austin__generate__" pt in
 	
@@ -283,6 +299,8 @@ and generateArray (t:typ) (base:typ) (d1:exp) (l:lval) (source:file) =
 	)
 	
 and handleInputType (l:lval) (t:typ) (source:file) (containingFdec: fundec) = 
+	if (hasTypeConstAttr t) then []
+	else( 
 	match t with
 		| TNamed(ti, _) -> 
 			handleInputType l ti.ttype source containingFdec
@@ -333,7 +351,7 @@ and handleInputType (l:lval) (t:typ) (source:file) (containingFdec: fundec) =
 		| TEnum(enumI, _) -> [makeIntTypeCall IInt l]
 		| _ -> 
 			Log.warn (sprintf "Ignoring input %s due to unsupported type %s (%s)\n" (Pretty.sprint 255 (Cil.d_lval () l)) (Pretty.sprint 255 (Cil.d_type () t)) containingFdec.svar.vname);
-			[]
+			[] ) 
 
 let callAustinClearWorkItems () = 
 	let clrF = emptyFunction "Austin__ClearWorkItems" in
@@ -405,10 +423,11 @@ let isDeclaredInput (v:varinfo) =
 	match(tryGetAttribute "austin__input" v.vattr) with
 		| None -> false
 		| Some _ -> true
-					
+										
 let getGlobalInputs (source:file) = 
 	let checkVarinfo (v:varinfo) = 
 		if v.vstorage = Extern then false
+		else if (hasVarConstAttr v) then false
 		else if (isFunctionTypeOrFunctionPointer v.vtype) then false
 		else if (isUnionType v.vtype) then false
 		else if (List.mem v.vname !globalsToIgnore) then false
@@ -489,33 +508,7 @@ let createTestDriver (fut:fundec) (source : file) =
 						Log.error (sprintf "Only accept varinfos but received other global %s\n" (Pretty.sprint 255 (Cil.d_global () g)))
 		)(getGlobalInputs source)
 	in
-	(*let inputVarinfos = (explicitArrayConversion (globals @ fut.sformals)) in
-	let initialArray = Array.make (List.length inputVarinfos) dummyInstr in
-	let arrayIndex = ref 0 in
-	let arrayInstructions = 
-		List.iter(
-			fun v -> 
-				let v' = 
-					if not(v.vglob) then ( 
-						makeLocalVar drv v.vname (removeAllConstAttributes v.vtype)
-					) else v
-				in
-				Log.log (Printf.sprintf "input=%s\n" v'.vname);
-				let instr = (handleInputType (var v') (removeAllConstAttributes v'.vtype) source fut) in
-				List.iter(
-					fun i -> 
-						if !arrayIndex >= (Array.length initialArray) then (
-							let newArray = Array.make ((Array.length initialArray) + 100) dummyInstr in
-							Array.blit initialArray 0 newArray 0 (Array.length initialArray);
-							
-							
-						) else (
-							Array.set initialArray !arrayIndex i;
-							incr arrayIndex
-						)
-				)instr;
-		)inputVarinfos
-	in*)
+	
 	let initInstructions = 
 		List.fold_left(
 			fun ins v -> 
@@ -525,8 +518,7 @@ let createTestDriver (fut:fundec) (source : file) =
 					) else v
 				in
 				inputVarinfos := v::(!inputVarinfos);
-				(*Log.log (Printf.sprintf "input=%s\n" v'.vname);*)
-				(*List.rev_append (List.rev ins) (handleInputType (var v') (removeAllConstAttributes v'.vtype) source fut)*)
+				
 				(ins @ (handleInputType (var v') (removeAllConstAttributes v'.vtype) source fut))
 		) [] (explicitArrayConversion (globals @ fut.sformals))
 	in
@@ -574,4 +566,5 @@ let addAustinFunctions (source : file) =
 				source.globals <- (source.globals @ [GFun(fdec, locUnknown)]);
 			(name::nameList) 
 	) prototypes []
+	
 	
