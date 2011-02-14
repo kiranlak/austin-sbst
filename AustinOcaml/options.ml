@@ -47,8 +47,8 @@ let keyLogTestCases = "logTestCases"
 
 let machineDependentPreamble = 
 	match Sys.word_size with
-		| 32 -> "x86.c"
-		| _ -> "x86_64.c"
+		| 32 -> "extra/x86.c"
+		| _ -> "extra/x86_64.c"
 		
 let addOptionKeysToConfig () = 
 	add keySUTpreamble (Filename.concat !austinLibDir machineDependentPreamble);

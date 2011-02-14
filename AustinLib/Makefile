@@ -19,14 +19,15 @@ endif
 
 CILOBJ := ${CIL}obj/x86_${OS}/
 
+
 ###############################
+OCC := ocamlopt
+CC := g++
+
 CPPDIR := src/
 OCAMLDIR := ../AustinOcaml/
 
 LIBNAME := libAustinLib.a
-
-OCC := ocamlopt
-CC := g++
 
 OCAMLINCL := -I ${CILOBJ} -I ${OCAMLDIR} -I ${OCAMLDIR}config/ \
 -I ${OCAMLDIR}log/ -I ${OCAMLDIR}utils/ -I ${OCAMLDIR}symbolic/ \
@@ -65,7 +66,7 @@ endif
 	${OCC} -o $@ ${OCAMLINCL} -c $<
 
 obj/camlcode.o : ${OCAMLOBJS}
-	ocamlopt -output-obj -o obj/camlcode.o ${OCAMLINCL} str.cmxa unix.cmxa cil.cmxa ${OCAMLOBJS}
+	${OCC} -output-obj -o obj/camlcode.o ${OCAMLINCL} str.cmxa unix.cmxa cil.cmxa ${OCAMLOBJS}
 		
 %.o : %.cpp
 	${CC} -o $@ -c ${CXXFLAGS} $<

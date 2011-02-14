@@ -15,3 +15,6 @@ symbolic
 testcases
 ui
 utils
+testsuite
+testsuite/inputs
+testsuite/outputs

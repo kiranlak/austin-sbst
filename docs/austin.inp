@@ -4,21 +4,19 @@
 # Adequacy Criterion
 tdgCriterion = branch
 
-# Search Method (possible values are: random,chc)
-tdgSearchMethod = chc
+# Search Method (possible values are: random,hc,chc)
+tdgSearchMethod = hc
 
 # Log
 logLevel = verbose
 logToScreen = true
-logCsvResults = true
-logTestCases = false
+logCsvResults = false
+logTestCases = true
 
-# path to folder where x86.c or x86_64.c reside
-austinLib = /home/kiran/workspace/austin/x86/
+# path to AustinLib folder
+austinLib = /Users/kiran/workspace/austin-sbst/AustinLib/
 
 # Output Base Dir
-austinOut = .
+austinOut = /Users/kiran/workspace/austin-sbst/out/
 
-#compiler
-# compilerIncludes = -I .
 

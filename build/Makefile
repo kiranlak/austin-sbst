@@ -1,7 +1,7 @@
 all : 
-	${MAKE} -f ../AustinLib/Makefile all
-	${MAKE} -f ../AustinOcaml/Makefile all
+	cd ../AustinLib ; ${MAKE} -f ../AustinLib/Makefile all
+	cd ../AustinOcaml ; ${MAKE} -f ../AustinOcaml/Makefile all
 	 
 clean :
-	${MAKE} -f ../AustinLib/Makefile clean
-	${MAKE} -f ../AustinOcaml/Makefile clean
+	cd ../AustinLib ;${MAKE} -f ../AustinLib/Makefile clean
+	cd ../AusinOcaml ; ${MAKE} -f ../AustinOcaml/Makefile clean
