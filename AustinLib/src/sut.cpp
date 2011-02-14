@@ -174,13 +174,6 @@ void InitializeOcamlRuntime(string& outDir, string& libDir)
 
 	CAMLreturn0;
 }
-extern "C" void Austin__AddPrecon(const char* funcname, const char* expname)
-{
-	ofstream ofs;
-	ofs.open("/home/kiran/workspace/Austin/AustinCpp/out/precon.txt", ios::out | ios::app);
-	ofs << funcname << "," << expname << endl;
-	ofs.close();
-}
 extern "C" void Austin__Debug(char* msg)
 {
 	cout << "AustinLib Debug:" << msg << endl;

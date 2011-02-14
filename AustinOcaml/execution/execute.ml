@@ -5,6 +5,7 @@ open Utils
 open ConfigFile
 open BaseSearchMethod
 open RandomSearch
+open SymbolicHillClimbSearch
 open HillClimbSearch
 open BaseObjFunc
 open BranchCoverageObjFunc
@@ -21,6 +22,8 @@ let getSearchMethod (source:file) (drv:fundec) (fut:fundec) (search:string) =
 	if search = "random" then
 		((new randomSearch source drv fut) :> baseSearchMethod)
 	else if search = "chc" then
+		((new symbolicHillClimbSearch source drv fut) :> baseSearchMethod)
+	else if search = "hc" then
 		((new hillClimbSearch source drv fut) :> baseSearchMethod)
 	else
 		Log.error "Invalid search algorithm\n"

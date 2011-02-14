@@ -37,8 +37,6 @@ void Austin__Teardown();
 void Austin__Assert(int);
 void Austin__Raise(int);
 
-void Austin__AddPrecon(const char*, const char*);
-
 void Austin__ClearWorkItems();
 
 void Austin__Free(void*);

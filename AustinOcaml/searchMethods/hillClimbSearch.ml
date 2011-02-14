@@ -4,9 +4,7 @@ open BaseSearchMethod
 open BaseObjFunc
 open Solution
 open SolutionGenerator
-open Symbolic
 
-module EQ = EquivalenceGraph
 module Log = LogManager
 
 class collectLvalFromExprVisitor (lv:lval list ref) (addr:lval list ref) = object(self)
@@ -28,7 +26,7 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 	inherit baseSearchMethod source drv fut as super
 	
 	val solGenerator = 
-		new solutionGenerator drv false
+		new solutionGenerator drv true
 			
 	val mutable init = true
 	val mutable targetId = 0
@@ -39,12 +37,10 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
   val mutable index = 0;
   val mutable lastIndex = 0;
   val mutable patternMoves = 0;
-	val mutable isPointerMove = false
 	
 	val mutable currentSolution = new candidateSolution
 	val mutable bestSolution = new candidateSolution
 	
-	val mutable updateNodeList = false
 	val mutable numericNodeIndeces = []
 	
 	method initialize stringParas intParas = 
@@ -58,23 +54,11 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 		index <- 0;
 		lastIndex <- 0;
 		patternMoves <- 0;
-		isPointerMove <- false;
-		updateNodeList <- false;
 		if full then (
 			init <- true;
-			EQ.emptyGraph ();
 			numericNodeIndeces <- [];
 		)
 	
-	method private initializeSymbolicState () = 
-		Symbolic.reset();
-		symEnterFunctionSimple drv;
-		List.iter(
-			fun node -> 
-				updateStateEx node.cilLval (Some(fut)) true (SymEx(CilExpr(Lval(node.cilLval))))
-		)(currentSolution#getRevInputList());
-		Symbolic.saveCurrentStateToFile (ConfigFile.find Options.keySymState)
-		
 	method private makeNumTypeNodeList () = 
 		let indx = ref (-1) in
 			numericNodeIndeces <- (List.fold_left(
@@ -133,159 +117,10 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 		this#makeNumericalMove true;
 		Log.log "done\n"
 	
-	method private trySolvePointerConstraints () = 
-		(* iterate over all nodes in the EQ and instantiate them*)
-		(*Log.log (Printf.sprintf "graph before move:\n%s\n"
-			(Pretty.sprint 255 (EQ.printGraph())));*)
-		let lvals = ref [] in
-		let addr = ref [] in
-		
-		let findNodeFromLvalName (l:lval) = 
-			match (currentSolution#tryFindNodeFromLvalName l) with
-				| None -> Log.error (Printf.sprintf "Failed to find %s in input node list\n" (Pretty.sprint 255 (Cil.d_lval () l)));
-				|	Some(n) -> n
-		in
-		let setLvalsToNull (lvals:lval list) =
-			 List.iter(
-				fun l -> 
-					let node = findNodeFromLvalName l in
-					match node.node with
-						| PointerNode(pn) -> 
-							pn.targetNodeId <- (-1);
-							pn.pointToNull <- true;
-							pn.takesAddrOf <-false;
-						| _ -> 
-							Log.warn (Printf.sprintf "Was expecting pointer (to set to null), but received %s (ignoring)\n" (Pretty.sprint 255 (Cil.d_type() (typeOfLval node.cilLval))))
-			)lvals
-		in
-		let setLvalsToTID (lvals:lval list) (node:baseNode) =
-			 List.iter(
-				fun l -> 
-					let n = findNodeFromLvalName l in
-					if n.bid <> node.bid then (
-						match n.node,node.node with
-							| PointerNode(pn),PointerNode(tpn) -> 
-								pn.targetNodeId <- node.bid;
-								pn.pointToNull <- tpn.pointToNull;
-								pn.takesAddrOf <- tpn.takesAddrOf;
-							| _,_ -> 
-								Log.warn (Printf.sprintf "Was expecting pointer (to assign tid), but received %s (ignoring)\n" (Pretty.sprint 255 (Cil.d_type() (typeOfLval n.cilLval))))
-					)
-			)lvals
-		in
-		let containsAnAddrOf (elements:exp list) =
-			if not(List.exists(fun e -> match (stripCasts e) with AddrOf _ -> true | _ -> false)elements) then (
-				List.exists (
-					fun e -> 
-						lvals := [];
-						addr := [];
-						let vis = new collectLvalFromExprVisitor lvals addr in 
-						ignore(visitCilExpr vis e);
-						(List.length !addr) <> 0
-				) elements
-			) else
-				true 
-		in
-		let containsConstant (elements:exp list) =
-			List.filter(fun e -> isConstant e)elements
-		in
-		List.iter(
-			fun eqNode -> 
-				if (containsAnAddrOf (EQ.EquivalenceNode.elements eqNode.EQ.elements)) then (
-					(**TODO: addressOf *)
-					Log.unimp "AddrOf in EQ node\n"
-				) else (
-					let constants = containsConstant (EQ.EquivalenceNode.elements eqNode.EQ.elements) in
-					if (List.length constants) > 0 then (
-						if not(isZero (List.hd constants)) then 
-							Log.unimp "Non-zero constant in EQ node\n";
-						EQ.EquivalenceNode.iter(
-							fun e ->
-								lvals := [];
-								addr := [];
-								let vis = new collectLvalFromExprVisitor lvals addr in 
-								ignore(visitCilExpr vis e);
-								setLvalsToNull (!lvals @ !addr);
-						)eqNode.EQ.elements
-					) else (
-						let nodeEdgeCnt = (EQ.IntSet.cardinal eqNode.EQ.edges) in
-						if nodeEdgeCnt = 0 ||
-							 (EQ.containsZeroNode eqNode) then (
-							EQ.EquivalenceNode.iter(
-								fun e ->
-									lvals := [];
-									addr := [];
-									let vis = new collectLvalFromExprVisitor lvals addr in 
-									ignore(visitCilExpr vis e);
-									setLvalsToNull (!lvals @ !addr);
-							)eqNode.EQ.elements
-						) else (
-							let e = EQ.EquivalenceNode.choose eqNode.EQ.elements in
-							lvals := [];
-							addr := [];
-							let vis = new collectLvalFromExprVisitor lvals addr in 
-							ignore(visitCilExpr vis e);
-							assert((List.length !lvals) > 0);
-							let l = List.hd !lvals in
-							let node = findNodeFromLvalName l in
-							(
-								match node.node with
-									| PointerNode(pn) -> 
-										pn.targetNodeId <- (-1);
-										pn.pointToNull <- false;
-										pn.takesAddrOf <- false
-									| _ -> 
-										Log.warn (Printf.sprintf "Was expecting pointer (to assign malloc), but received %s (ignoring)\n" (Pretty.sprint 255 (Cil.d_type() (typeOfLval node.cilLval))))
-							);
-							EQ.EquivalenceNode.iter(
-								fun e ->
-									lvals := [];
-									addr := [];
-									let vis = new collectLvalFromExprVisitor lvals addr in 
-									ignore(visitCilExpr vis e);
-									setLvalsToTID !lvals node
-							)eqNode.EQ.elements
-						)
-					)
-				)
-		)!EQ.eqGraph
-		
-	method private makePointerMove (conj : (int*int*exp)) = 
-		(**************************)
-		let thrd (_,_,a) = a in
-		Log.log "Pointer move...";
-		let conjExpr = thrd conj in
-		Log.log (Printf.sprintf "\ntrying to solve inv of %s\n" (Pretty.sprint 255 (Cil.d_exp()conjExpr)));
-		let lhsExprAlia,rhsExprAlia = (*findPCConjunctAliaExpr conjExpr*) ([],[]) in
-		EQ.addExpressionToGraph (Symbolic.tryInvertOp conjExpr) lhsExprAlia rhsExprAlia;
-		isPointerMove <- true;
-		this#trySolvePointerConstraints();
-		currentSolution <- (solGenerator#generateUpdatedSolution currentSolution true);
-		Log.log "done\n"
-			
-	method private doesConstraintRequireSolving (sid,index:int*int) = 
-		let criticalEdges = ((targetId,targetIndx)::(Cfginfo.getCriticalEdges targetId)) in
-		let exists (sid',index') = sid' = sid && index' = index in
-		let notExists (sid',index') = sid' = sid && index' <> index in
-		not(List.exists exists criticalEdges) && (List.exists notExists criticalEdges)
-	
-	method private requiresPointerMove () =
-		let pcFilename = (ConfigFile.find Options.keySymPath) in
-		assert(Sys.file_exists pcFilename);
-		Symbolic.loadPCfromFile pcFilename;
-			try
-				Some(List.find (
-					fun (sid,index,con) ->
-						(EQ.expDependsOnMem con) && (this#doesConstraintRequireSolving (sid,index))
-				)(List.rev Symbolic.pc.Symbolic.conjuncts))
-			with
-				| Not_found -> None
-	
 	method search (objFunc:baseObjFunc) = 
 		super#reset();
 		this#restart true;
 		currentSolution <- solGenerator#generateNewRandomSolution();
-		this#initializeSymbolicState();
 		this#makeNumTypeNodeList();
 		
 		let rec doSearch() = 
@@ -307,41 +142,20 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 					true
 				) else (
 					(
-						match (this#requiresPointerMove ()) with
-							| Some(conj) -> 
-								(
-									this#makePointerMove conj;
-									this#initializeSymbolicState();
-									this#makeNumTypeNodeList();
-									isPointerMove <- true
-								)
-							| None -> 
-								(
-									if objFunc#compare currentSolution bestSolution < 0 then (
-										bestSolution#init(currentSolution);
-										if not(isPointerMove) then (
-											this#makePatternMove()
-										) else (
-											this#restart false;
-											this#exploreNeighbourhood()
-										)
-									) else (
-										if isPointerMove || this#requiresRestart() then (
-											Log.log "Random restart\n";
-											this#restart true;
-											currentSolution <- solGenerator#generateNewRandomSolution();
-											this#initializeSymbolicState();
-											this#makeNumTypeNodeList();
-										) else (
-											currentSolution#init(bestSolution);
-											if updateNodeList then (
-												this#restart false;
-												this#makeNumTypeNodeList();
-											);
-											this#exploreNeighbourhood()
-										)
-									)
-								)
+						if objFunc#compare currentSolution bestSolution < 0 then (
+							bestSolution#init(currentSolution);
+							this#makePatternMove()
+						) else (
+							if this#requiresRestart() then (
+								Log.log "Random restart\n";
+								this#restart true;
+								currentSolution <- solGenerator#generateNewRandomSolution();
+								this#makeNumTypeNodeList();
+							) else (
+								currentSolution#init(bestSolution);
+								this#exploreNeighbourhood()
+							)
+						)
 						);
 						doSearch()
 				)
