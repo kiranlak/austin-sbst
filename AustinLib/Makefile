@@ -4,7 +4,8 @@ ifeq ($(OS),Linux)
 OS := LINUX
 endif
 
-OCAMLARCH=$(subst architecture:,,$(shell ocamlopt -config | grep architecture: ))
+#ARCH=$(subst architecture:,,$(shell ocamlopt -config | grep architecture: ))
+ARCH := $(shell arch)
 
 # SET THIS TO CIL DIRECTORY
 ifndef CILHOME
@@ -38,7 +39,7 @@ CXXFLAGS := -O0 -g3 -Wall -fmessage-length=0 -fPIC
 
 ifeq ($(OS),Darwin)
 OCAMLLIB := /usr/local/lib/ocaml/
-CXXFLAGS += -arch ${OCAMLARCH} -I ${OCAMLLIB}
+CXXFLAGS += -arch ${ARCH} -I ${OCAMLLIB}
 else
 ifeq ($(OS),LINUX)
 OCAMLLIB := /usr/lib/ocaml/

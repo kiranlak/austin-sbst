@@ -20,8 +20,8 @@ CILOBJ := ${CILHOME}obj/x86_${OS}/
 ###############################
 TESTEXE := testRunner
 EXE := austin
-# OCC := ocamlopt
-OCC := /usr/local/bin/ocamlopt
+OCC := ocamlopt
+#OCC := /usr/local/bin/ocamlopt
 
 OCAMLINCL := -I ${CILOBJ} -I log/ -I programstructure/ -I testcases/ \
 -I searchMethods/ -I random/ -I solution/ -I symbolic/ -I execution/ -I utils/ \
