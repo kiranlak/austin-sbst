@@ -106,6 +106,7 @@ let mainExecute () =
 	
 	if criterion = "branch" then (
 		let testgen = new branchCoverageGenerator source drv fut search in
+		Preconditions.loadPreconditions();
 		testgen#start();
 		createTestCasesFromArchive drv fut
 	)

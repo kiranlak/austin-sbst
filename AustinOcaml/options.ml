@@ -39,11 +39,17 @@ let keyBranchIds = "txtBranchIds"
 let keyInstrumentLog = "instrLog"
 let keyExecLog = "execLog"
 let keySUTLog = "sutLog"
+
+let keyLogToScreen = "logToScreen"
+let keyLogToFile = "logToFile"
+let keyLogLevel = "logLevel"
+let keyLogCsv = "logCsvResults"
+let keyLogTestCases = "logTestCases"
+
 let keySeeds = "rndSeeds"
 
 let keyPreconditionFile = "preconFile"
-let keyLogCsv = "logCsvResults"
-let keyLogTestCases = "logTestCases"
+
 
 let machineDependentPreamble = 
 	match Sys.word_size with
@@ -68,5 +74,5 @@ let addOptionKeysToConfig () =
 	add keySUTLog (mkFileName "sut.log");
 	add keySeeds (mkFileName "randomNumberSeeds.txt");
 	add keyBranchTraceName (mkFileName "traceInfo.dat");
-	add keyPreconditionFile (mkFileName "precon.txt")
+	add keyPreconditionFile (mkFileName "precon.dat")
 ;;	

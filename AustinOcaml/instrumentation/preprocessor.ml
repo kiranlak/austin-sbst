@@ -60,9 +60,7 @@ class removeUnsafeFileIOVisitor = object(this)
 		"vfprintf";
 		"fputc";
 		"fputs";
-		"putc";
 		"_IO_putc";
-		"puts";
 		"_IO_puts";
 		"fwrite";
 		"fgetpos";

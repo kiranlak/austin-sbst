@@ -4,8 +4,6 @@ ifeq ($(OS),Linux)
 OS := LINUX
 endif
 
-OCAMLARCH=$(subst architecture:,,$(shell ocamlopt -config | grep architecture: ))
-
 # SET THIS TO CIL DIRECTORY
 ifndef CILHOME
 ifeq ($(OS),Darwin)
@@ -22,8 +20,8 @@ CILOBJ := ${CILHOME}obj/x86_${OS}/
 ###############################
 TESTEXE := testRunner
 EXE := austin
-OCC := ocamlopt
-
+# OCC := ocamlopt
+OCC := /usr/local/bin/ocamlopt
 
 OCAMLINCL := -I ${CILOBJ} -I log/ -I programstructure/ -I testcases/ \
 -I searchMethods/ -I random/ -I solution/ -I symbolic/ -I execution/ -I utils/ \
@@ -34,11 +32,11 @@ OCAMLSRCS := config/configFile.ml options.ml log/logManager.ml \
 searchMethods/objectives/baseObjValue.ml utils/utils.ml solution/solution.ml \
 searchMethods/objectives/baseObjFunc.ml programstructure/cfginfo.ml \
 searchMethods/baseSearchMethod.ml symbolic/symbolic.ml random/austinRand.ml \
-testcases/testCaseWriter.ml symbolic/equivalenceGraph.ml \
+testcases/testCaseWriter.ml symbolic/equivalenceGraph.ml solution/generator/preconditions.ml \
 solution/generator/solutionGenerator.ml searchMethods/objectives/branchCoverageObjFunc.ml \
 searchMethods/symbolicHillClimbSearch.ml searchMethods/hillClimbSearch.ml searchMethods/randomSearch.ml \
 instrumentation/traceManager.ml instrumentation/branchtrace.ml \
-instrumentation/preprocessor.ml instrumentation/symbolictrace.ml \
+instrumentation/preprocessor.ml instrumentation/preconditionAnalyser.ml instrumentation/symbolictrace.ml \
 instrumentation/testdriver.ml execution/execute.ml instrumentation/instrument.ml \
 ui/commandLineHandler.ml
 
@@ -48,14 +46,15 @@ TESTOBJS := $(subst ui/commandLineHandler.cmx,,${OCAMLOBJS})
 
 %.cmx : %.ml
 	${OCC} -o $@ ${OCAMLINCL} -c $<
-	
+
 ${EXE} : ${OCAMLOBJS}
-	${OCC} -verbose -o ${EXE} ${OCAMLINCL} str.cmxa unix.cmxa nums.cmxa cil.cmxa ${OCAMLOBJS} 
-	
-all : ${EXE}
+	${OCC} -o ${EXE} ${OCAMLINCL} str.cmxa unix.cmxa nums.cmxa cil.cmxa ${OCAMLOBJS} 
+
 	
 ${TESTEXE} : ${TESTOBJS} testsuite/testSuiteRunner.cmx
 	${OCC} ${OCAMLINCL} str.cmxa unix.cmxa nums.cmxa cil.cmxa ${TESTOBJS} testsuite/testSuiteRunner.cmx -o ${TESTEXE}
+	
+all : ${EXE} ${TESTEXE}
 	
 clean:
 	-rm -f ${EXE} 

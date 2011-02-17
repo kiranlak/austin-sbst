@@ -260,7 +260,7 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 		EQ.addExpressionToGraph (Symbolic.tryInvertOp conjExpr) lhsExprAlia rhsExprAlia;
 		isPointerMove <- true;
 		this#trySolvePointerConstraints();
-		currentSolution <- (solGenerator#generateUpdatedSolution currentSolution true);
+		currentSolution <- (solGenerator#generateUpdatedSolution currentSolution);
 		Log.log "done\n"
 			
 	method private doesConstraintRequireSolving (sid,index:int*int) = 

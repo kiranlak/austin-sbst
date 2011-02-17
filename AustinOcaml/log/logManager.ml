@@ -6,27 +6,41 @@ open Pretty
 let verbose = ref true
 let debug = ref false
 let logToScreen = ref true
+let logToFile = ref true
 
 type logChannelType = {mutable oc:out_channel option}
 let logChannel = {oc=None}
 
-let setLogLevel (level : string) (toScreen:bool) = 
-	logToScreen := toScreen;
+let setupLogLevels () =
+	let level = 
+		match (ConfigFile.hasKey Options.keyLogLevel) with
+			| None -> "none"
+			| Some(key) -> key
+	in
 	if level = "verbose" then
 		verbose := true
 	else if level = "debug" then (
 		verbose := true;
 		debug := true;	
+	); 
+	(match (ConfigFile.hasKey Options.keyLogToScreen) with
+		| Some(key) -> logToScreen := key = "true"
+		| _ -> ()
+	);
+	match (ConfigFile.hasKey Options.keyLogToFile) with
+		| Some(key) -> logToFile := key = "true"
+		| _ -> ()
+
+let setLogChannel (name : string) =
+	if !logToFile then (
+		(
+			match logChannel.oc with
+				| Some(oc) -> close_out oc
+				| _ -> ()
+		);
+		logChannel.oc <- Some((*open_out_gen [Open_creat;Open_append;Open_text] 0o755 name*) open_out name)
 	)
 	
-let setLogChannel (name : string) =
-	(
-		match logChannel.oc with
-			| Some(oc) -> close_out oc
-			| _ -> ()
-	);
-	logChannel.oc <- Some((*open_out_gen [Open_creat;Open_append;Open_text] 0o755 name*) open_out name)
-
 let setLogChannelOpt (id:int) = 
 	if id = 0 then
 		setLogChannel (ConfigFile.find Options.keyInstrumentLog)
@@ -144,7 +158,6 @@ let debug (msg:string) =
 		)
 	)
 	
-;;	
-Callback.register "setLogLevel" setLogLevel;;
+;;
 Callback.register "setLogChannel" setLogChannelOpt;;
 Callback.register "closeLogChannel" close;;

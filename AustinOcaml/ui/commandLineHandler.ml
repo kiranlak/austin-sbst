@@ -82,6 +82,11 @@ let main () =
 	
 	Options.addOptionKeysToConfig ();
 		
+	Log.setupLogLevels();
+	
+	if not(!instrument) && ((List.length !sources) > 0) && (!execOptsSutPath = "") then
+		instrument := true;
+		
 	if !instrument then (
 		Log.setLogChannel (find Options.keyInstrumentLog);
 		if (List.length !sources) = 0 then

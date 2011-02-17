@@ -1,41 +1,168 @@
-README:
-To use AUSTIN you have to follow these steps:
-- Instrument source(s)
-- Compile instrumented source (manually)
-- Run AUSTIN
+Executive Summary:
+~~~~~~~~~~~~~~~~~~
+AUSTIN is a structural test data generation tool (for unit tests) for the C language. 
+It is designed as a research prototype and the aim is to aid researchers in automated test data generation 
+using search-based algorithms. It is based on the CIL framework (see http://www.cs.berkeley.edu/~necula/cil/) 
+and currently supports a random search, a hill climber (based on the Alternating Variable Method by Bogdan Korel) and
+a hill climber that is augmented with a set of constraint solving rules for pointer type inputs. 
 
-AUSTIN uses a configuration file to set certain parameters (see attached austin.inp file for an example). You can either specify the path to this configuration file by setting the environment variable AustinINP, or via the command line using the -conf option.
-
-Instrumentation:
-To instrument a function call
-
-austin.native -i -fut <name of function under test> -conf /path to /austin.inp <sources>
-
-Compilation:
-You have to manually compile the instrumented file with a C++ compiler and link it against libAustinLib.a
-
-g++ -o /path to/sut.exe /path to/austin_instrumented.o -L /path to libAustinLib.a/ -lAustinLib -ldl -lm
-
-Execution:
-
-austin.native -sut /path to /sut.exe 
+AUSTIN has been tested on MacOS and Linux (x86 and amd64/x86_64). I am working on a windows port which will
+probably be under cygwin.
+ 
+If you have any problems please email k.lakhotia@cs.ucl.ac.uk
 
 
-To build AUSTIN from source you require
-- cil
-- ocaml
+Building and installing it:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To install from the subversion repository: 
 
-You need to build the following Ocaml files (which use the Ocaml libraries str,unix,cil,nums):
-- commandLineHandler.byte
-- symtrace.cmx
-- solutionManager.cmx
+ - Install the Ocaml runtime system (http://caml.inria.fr/download.en.html)
+ 
+ - Install CIL (http://sourceforge.net/projects/cil)
+ 
+ - Check out the code from the SVN, following the instructions at 
+   http://code.google.com/p/austin-sbst/source/checkout
+ 
+ - Set the environment variable CILHOME to the directory of your CIL installation, e.g.
+   export CILHOME=/Users/joe/cil-1.3.7/
+     
+ - Go to the build/ directory and type
+   make all
+   
+   This will build a static library called libAustinLib.a against which you need to link the program under 
+   test after instrumentation. By default make will try and create a single library containing the object 
+   files from the following Ocaml libraries: unix, str, asmrun, as well as the following Cil library: perfcount.
+   If you don't want this, then call make with
+   
+   make all THIN=yes
+   
+   This will only include AUSTIN specific code in the archive. However, when you link your program under test, 
+   you will have to include the unix,str,asmrun and perfcount libraries.
+   
+   Besides the library, make will also build two executables: austin and testRunner. These will be located 
+   in the AustinOcaml directory. austin is the main program and testRunner a little helper to run testsuites.
+   
 
-To build the library:
-- compile all the cpp files under AustinLib/src
-- build an object file using ocamlopt and the following cmx files: configFile.cmx options.cmx logManager.cmx utils.cmx symbolic.cmx solution.cmx mainLib.cmx symtrace.cmx solutionManager.cmx
+Running AUSTIN:
+~~~~~~~~~~~~~~~
+AUSTIN requires a configuration file to run. You can either set a path to this configuration file in the 
+environment through 
 
-For example: 
+   export AustinINP=<path to configuration file>
 
-ocamlopt -output-obj -o camlcode.o -I "/path to/cil-1.3.7/obj/x86_LINUX/" -I "/path to AustinOcaml object files/"  str.cmxa unix.cmxa cil.cmxa configFile.cmx options.cmx logManager.cmx utils.cmx symbolic.cmx solution.cmx mainLib.cmx symtrace.cmx solutionManager.cmx
+or you can supply the path to the configuration file from the command line by including
 
-When building the archive with ar, include the object file (e.g. camlcode.o) along with the compiled cpp files. You may also want to extract the object files from libasmrun.a,libstr.a,libunix.a,libperfcount.a (from cil) and include those. Otherwise you have to include those libraries when linking the instrumented object file.
+   -conf <path to configuration file>
+   
+The configuration files needs to contain at least the test adequacy criterion (e.g. branch coverage), the 
+search algorithm to use (e.g. random, hill climber) and the paths to the AustinLib directory and an output 
+directory. See austin.inp in the docs folder for an example.
+
+You then need to follow these steps to run AUSTIN:
+
+ - Instrument your program (i.e. the source files you want to test). You can supply multiple source files
+   from the command line or use the * wildcard. However, all source files need to be in the same directory,
+   that is you cannot have source files in sub-directories
+ 
+ - Compile and link the instrumented files (use at least these linker flags: -lAustinLib -ldl -lm). The linking
+   has to be done with a C++ compiler
+ 
+ - Run AUSTIN
+ 
+ 
+Example:
+~~~~~~~~~~~~~~~~
+To instrument your source files a.c, b.c and d.c call
+
+ ./austin -i -fut function-to-test -conf <path to austin configuration file> a.c b.c d.c
+ 
+AUSTIN will produce a single instrumented source file (called austin_instrumented.c). To compile the instrumented source do
+ gcc -c austin_instrumented.c
+ 
+Then link the object file using a C++ compiler
+
+ g++ -o sut.exe austin_instrumented.o -L<path to AustinLib> -lAustinLib -ldl -lm
+ 
+Then run AUSTIN
+
+ ./austin -sut <path to sut.exe> -conf <path to austin configuration file -- austin.inp>
+ 
+ 
+Configuration File:
+~~~~~~~~~~~~~~~~~~~
+Here are the keys you may specify in the configuration file. The format for key-value pairs is
+
+  key = value
+  
+You may specify comments by using the # symbol.
+
+Test adequacy criterion:
+Key: tdgCriterion
+Values: branch
+
+Search method:
+Key: tdgSearchMethod
+Values: random,hc,chc
+
+Level of logging:
+Key: logLevel
+Values: verbose,debug
+
+Print output to screen:
+Key: logToScreen
+Values: true,false
+
+Print output to file:
+Key: logToFile
+Values: true,false
+
+Log coverage data to csv file:
+Key: logCsvResults
+Values: true,false
+
+Log generated test cases to file:
+Key: logTestCases
+Values: true,false
+
+Path to AustinLib (which contains extra/x86.c and extra/x86_64.c):
+Key: austinLib
+
+Path to output folder:
+Key: austinOut
+
+Specifying preconditions:
+~~~~~~~~~~~~~~~~~~~~~~~~~
+You can specify simple preconditions on inputs through
+ 
+   void Austin__Assume(unsigned int, ...);
+
+To do so add a call to Austin__Assume(....) to the body of the function under test 
+(ideally somewhere near the top). The first argument is the number of conditions you want to 
+create. Subsequent arguments are atomic constraints of the form a op b, where op can be <,<=,>,>=,==,!=.
+Either a or b must be a constant value. Pointer constraints may only contain == and != ops, while
+arithmetic constraints cannot use the != op.
+
+Example:
+void foo(int* p, int a, int b)
+{
+   Austin__Assume(1, p != (void*)0);
+   Austin__Assume(2, a > 5, a < 10);
+   ...
+}
+
+Classifying pointer input as array:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In C it is not always possible to determine from an input's type signature if that input denotes an 
+array. You can tell AUSTIN to treat inputs as an array by adding the (gcc style) attribute
+ 
+ __attribute__((austin__array (X)))
+ 
+where the X specifies the length of the array.
+
+Example of declaring input int* p as int p[3]:
+
+void foo(int* __attribute__((austin__array (3))) p)
+{
+  ...
+}
+ 

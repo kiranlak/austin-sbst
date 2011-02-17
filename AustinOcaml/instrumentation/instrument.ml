@@ -4,6 +4,7 @@ open Printf
 open Options
 open Utils
 open ConfigFile
+open PreconditionAnalyser
 	
 module Log = LogManager
 
@@ -214,6 +215,10 @@ let mainInstrument (sources : string list) =
 				
 				Log.log "Saving test driver fundec (binary)...";
 				marshalFundec sutSource drv (ConfigFile.find Options.keyDrvFundec);
+				Log.log "done\n";
+				
+				Log.log "Saving any preconditions (binary)...";
+				collectPreconditions sutSource (ConfigFile.find Options.keyPreconditionFile);
 				Log.log "done\n";
 				
 				Log.log "Adding trace instrumentations...";

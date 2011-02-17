@@ -246,8 +246,7 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 		
 	method private removeTraceFiles () = 
 		let fnames = 
-			[ConfigFile.find Options.keyPreconditionFile;
-			 ConfigFile.find Options.keyBranchTraceName]
+			[ConfigFile.find Options.keyBranchTraceName]
 		in
 		List.iter(
 			fun f -> 

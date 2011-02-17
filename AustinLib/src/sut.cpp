@@ -239,6 +239,30 @@ extern "C" void Austin__Raise(int sig)
 {
 	raise(sig);
 }
+extern "C" void Austin__Assume(unsigned int argc, ...)
+{
+	va_list ap;
+
+	va_start(ap, argc);
+
+	bool error = false;
+
+	for (unsigned int i = 0; i < argc; i++)
+	{
+		if(!va_arg(ap, int))
+		{
+			error = true;
+			break;
+		}
+	}
+
+	va_end(ap);
+
+	if(error)
+	{
+		exit(255);
+	}
+}
 extern "C" void Austin__ClearWorkItems()
 {
 	assert(solManager != NULL);

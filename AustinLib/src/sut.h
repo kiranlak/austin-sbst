@@ -36,6 +36,7 @@ void Austin__Setup(int, char**);
 void Austin__Teardown();
 void Austin__Assert(int);
 void Austin__Raise(int);
+void Austin__Assume(unsigned int, ...);
 
 void Austin__ClearWorkItems();
 

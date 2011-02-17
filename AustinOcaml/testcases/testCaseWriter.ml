@@ -15,7 +15,7 @@ let freeExpr =
 		
 let saveCandidateSolution (id:int) (sol : candidateSolution) (comment:string) (testdrv:fundec) (fut:fundec) = 
 	let oc = open_out_gen flags perm (ConfigFile.find Options.keyTestCaseFile) in
-	let testcaseFunc = emptyFunction (Printf.sprintf "testcase_%d" id) in
+	let testcaseFunc = emptyFunction (Printf.sprintf "%s_testcase_%d" fut.svar.vname id) in
 	testcaseFunc.svar.vtype <- TFun(voidType, Some[], false, []);
 	
 	let mallocList = ref [] in

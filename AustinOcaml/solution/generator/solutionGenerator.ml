@@ -39,18 +39,21 @@ let computeIntegralBounds (l:lval) (signed:bool) =
 	(Big_int.int64_of_big_int bmin, Big_int.int64_of_big_int bmax)
 		
 let makeIntNode (kind:ikind) (l:lval) = 
-	match kind with
-		| IChar | ISChar | IInt | IShort | ILong | ILongLong -> 
-			let min,max = computeIntegralBounds l true in
-			let value = AustinRand.nextInt64 ~lower:min max in
-			mkIntNode min max value l
-		| IUChar | IUInt | IUShort | IULong | IULongLong -> 
-			let min,max = computeIntegralBounds l false in
-			let value = AustinRand.nextInt64 max in
-			mkIntNode min max value l
-		| IBool -> 
-			let value = if AustinRand.tossCoin() then Int64.one else Int64.zero in
-			mkIntNode Int64.zero Int64.one value l
+	let minOpt,maxOpt = Preconditions.getIntegralBounds l in
+	let minType,maxType = 
+		match kind with
+			| IBool -> Int64.zero,Int64.one
+			| _ -> computeIntegralBounds l (isSigned kind) 
+	in
+	let min,max = 
+		match minOpt,maxOpt with
+			| Some(_min),Some(_max) -> _min,_max
+			| Some(_min),None -> _min,maxType
+			| None, Some(_max) -> minType,_max
+			| None, None -> minType,maxType 
+	in
+	let value = AustinRand.nextInt64 ~lower:min max in
+	mkIntNode min max value l
 			
 let gaussian (mu:float) (sigma:float) = 
 	let u = AustinRand.nextFloat 1.0 in
@@ -59,8 +62,16 @@ let gaussian (mu:float) (sigma:float) =
 	let g = Pervasives.sin(2.0 *. pi *. v) *. Pervasives.sqrt(((-2.0) *. Pervasives.log(1.0 -. u))) in
 	mu +. (sigma *. g)
 	
-let generateRandomFloatVal () = 
-	gaussian 0.0 1.0
+let makeFloatNode (l:lval) = 
+	let minOpt,maxOpt = Preconditions.getFloatBounds l in
+	let value = 
+		match minOpt,maxOpt with
+			| Some(_min),Some(_max) -> AustinRand.nextFloat ~lower:_min _max
+			| Some(_min),_ -> AustinRand.nextFloat ~lower:_min 1.0
+			| _,Some(_max) -> AustinRand.nextFloat ~lower:0.0 _max
+			| _,_ -> gaussian 0.0 1.0
+	in
+	mkFloatNode value l
 	
 class changeVidVisitor (pairs:(varinfo*varinfo)list) = object(this)
 	inherit nopCilVisitor
@@ -261,23 +272,23 @@ class solutionGenerator (testDriver:fundec) (initializePointers:bool) = object(t
 		)unassignedPointers;
 		unassignedPointers <- []
 			
-	method private mkPointerToArrayUpdate (l:lval) (arrayType:typ) (arrayLength:int) (sol:candidateSolution) (ignorePrecon:bool) =
+	method private mkPointerToArrayUpdate (l:lval) (arrayType:typ) (arrayLength:int) (sol:candidateSolution) =
 		let rec mkArrayItems cnt res = 
 			if cnt >= arrayLength then (
 				res
 			) else (
-				mkArrayItems (cnt + 1) (res@(this#mkUpdatedBaseNodeList (Mem(BinOp(IndexPI, (Lval(l)), (integer cnt), arrayType)), NoOffset) arrayType sol ignorePrecon))
+				mkArrayItems (cnt + 1) (res@(this#mkUpdatedBaseNodeList (Mem(BinOp(IndexPI, (Lval(l)), (integer cnt), arrayType)), NoOffset) arrayType sol))
 			)
 		in
 		mkArrayItems 0 []
 	
-	method private mkArrayUpdate (l:lval) (arrayType:typ) (arrayLength:int) (sol:candidateSolution) (ignorePrecon:bool) =
+	method private mkArrayUpdate (l:lval) (arrayType:typ) (arrayLength:int) (sol:candidateSolution) =
 		let rec mkArrayItems cnt res = 
 			if cnt >= arrayLength then (
 				res
 			) else (
 				let l' = addOffsetLval (Index((integer cnt), NoOffset)) l in
-				mkArrayItems (cnt + 1) (res@(this#mkUpdatedBaseNodeList l' arrayType sol ignorePrecon))
+				mkArrayItems (cnt + 1) (res@(this#mkUpdatedBaseNodeList l' arrayType sol))
 			)
 		in
 		mkArrayItems 0 []
@@ -304,7 +315,7 @@ class solutionGenerator (testDriver:fundec) (initializePointers:bool) = object(t
 		in
 		mkArrayItems 0 []
 					
-	method private mkUpdatedBaseNodeList (l:lval) (t:typ) (sol:candidateSolution) (ignorePrecon:bool) = 
+	method private mkUpdatedBaseNodeList (l:lval) (t:typ) (sol:candidateSolution) = 
 		match t with
 			| TInt _ | TFloat _ | TEnum _  -> 
 				(
@@ -323,19 +334,12 @@ class solutionGenerator (testDriver:fundec) (initializePointers:bool) = object(t
 								match n.node with
 									| PointerNode(pn) -> 
 										(
-											let handleStdPtrNode () = 
-												if pn.isPointerToArray then (
-														(n::(this#mkPointerToArrayUpdate n.cilLval pn.targetNodeTyp pn.firstArrayDim sol ignorePrecon))
-													) else if not(pn.pointToNull) && pn.targetNodeId = (-1) then (
-														(n::(this#mkUpdatedBaseNodeList (Mem(Lval(n.cilLval)), NoOffset) pn.targetNodeTyp sol ignorePrecon))
-													) else (
-														[n]
-													)
-											in
-											if ignorePrecon then 
-												handleStdPtrNode()
-											else (
-												Log.unimp "Preconditions\n"
+											if pn.isPointerToArray then (
+												(n::(this#mkPointerToArrayUpdate n.cilLval pn.targetNodeTyp pn.firstArrayDim sol))
+											) else if not(pn.pointToNull) && pn.targetNodeId = (-1) then (
+												(n::(this#mkUpdatedBaseNodeList (Mem(Lval(n.cilLval)), NoOffset) pn.targetNodeTyp sol))
+											) else (
+												[n]
 											)								
 										)
 									| _ -> []
@@ -343,16 +347,16 @@ class solutionGenerator (testDriver:fundec) (initializePointers:bool) = object(t
 				)
 			| TArray(at, lengthO, _) -> 
 				(
-					(this#mkArrayUpdate l at (lenOfArray lengthO) sol ignorePrecon)
+					(this#mkArrayUpdate l at (lenOfArray lengthO) sol)
 				)
 			| TFun _ -> Log.error "TFun in solution generator\n"
 			| TNamed(ti,_) -> 
-				(this#mkUpdatedBaseNodeList l ti.ttype sol ignorePrecon)
+				(this#mkUpdatedBaseNodeList l ti.ttype sol)
 			| TComp(ci,_) -> 
 				List.fold_left(
 					fun res field -> 
 						let l' = addOffsetLval (Field(field, NoOffset)) l in
-						(res@(this#mkUpdatedBaseNodeList l' field.ftype sol ignorePrecon))
+						(res@(this#mkUpdatedBaseNodeList l' field.ftype sol))
 				)[] ci.cfields
 			| _ -> (* ignore input *)[]
 		
@@ -361,30 +365,38 @@ class solutionGenerator (testDriver:fundec) (initializePointers:bool) = object(t
 			| TInt(ikind,_) -> 
 				[makeIntNode ikind l]
 			| TFloat(fkind,_) -> 
-				let value = generateRandomFloatVal () in
-				[mkFloatNode value l]
+				[makeFloatNode l]
 			| TPtr(pt,_) -> 
 				(
 					if (isFunctionType (unrollType pt)) then []
 					else (
 						if arrayLength = 0 then (
-							(* normal pointer *)
-							if initializePointers then (
-								if AustinRand.tossCoin() then (
-									if AustinRand.tossCoin() then (
+							match (Preconditions.getPointerConstraint l) with
+								| Some tonull -> 
+									if tonull then
+										[mkPtrNode pt (-1) true false false 0 l]
+									else (
 										let node = mkPtrNode pt (-1) false false false 0 l in
 										(node::(this#mkNewBaseNodeList (Mem(Lval(l)), NoOffset) pt 0))
-									) else (
-										let node = mkPtrNode pt (0) false false false 0 l in
-										unassignedPointers <- (node::unassignedPointers);
-										[node]
 									)
-								) else (
-									[mkPtrNode pt (-1) true false false 0 l]
-								)
-							) else (
-								[mkPtrNode pt (-1) true false false 0 l]
-							)
+								| None -> (
+										if initializePointers then (
+											if AustinRand.tossCoin() then (
+												if AustinRand.tossCoin() then (
+													let node = mkPtrNode pt (-1) false false false 0 l in
+													(node::(this#mkNewBaseNodeList (Mem(Lval(l)), NoOffset) pt 0))
+												) else (
+													let node = mkPtrNode pt (0) false false false 0 l in
+													unassignedPointers <- (node::unassignedPointers);
+													[node]
+												)
+											) else (
+												[mkPtrNode pt (-1) true false false 0 l]
+											)
+										) else (
+											[mkPtrNode pt (-1) true false false 0 l]
+										)
+									)
 						) else (
 							(this#mkPointerToArrayNew l pt arrayLength)
 						)
@@ -452,11 +464,11 @@ class solutionGenerator (testDriver:fundec) (initializePointers:bool) = object(t
 					| _ -> ()
 		)inputs
 		
-	method generateUpdatedSolution (sol:candidateSolution) (ignorePrecon:bool) = 
+	method generateUpdatedSolution (sol:candidateSolution) = 
 		let updated = new candidateSolution in
 		updated#setSolutionId (sol#getSolutionId());
 		let handleLvalUpdate (l:lval) (t:typ)  = 
-			let baseNodes = this#mkUpdatedBaseNodeList l t sol ignorePrecon in
+			let baseNodes = this#mkUpdatedBaseNodeList l t sol in
 			List.iter(
 				fun node -> updated#appendNode node
 			)baseNodes

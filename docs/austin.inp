@@ -7,11 +7,12 @@ tdgCriterion = branch
 # Search Method (possible values are: random,hc,chc)
 tdgSearchMethod = hc
 
-# Log
+# Log Keys (mandatory)
 logLevel = verbose
 logToScreen = true
 logCsvResults = false
 logTestCases = true
+logToFile = false
 
 # path to AustinLib folder
 austinLib = /Users/kiran/workspace/austin-sbst/AustinLib/
