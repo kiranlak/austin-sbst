@@ -36,6 +36,7 @@ let main () =
 	let instrument = ref false in
 	let configName = ref "" in
 	let keepOps = ref false in
+	let printCFG = ref false in
   let argspec = 
 		[ 
 			("", Arg.Unit(fun() -> ()), "Global Options:")
@@ -54,6 +55,7 @@ let main () =
 		; ("-maxEvals", Arg.Int(fun i -> execOptsMaxEvals:=i), "set maximum number of fitness evaluations to use")
 		; ("", Arg.Unit(fun() -> ()), "Other Options:")
 		; ("-keep", Arg.Set keepOps, "keep logical operators")
+		; ("-printCFG", Arg.String(fun s -> insOptFutName:=s; printCFG := true), "<name of function> - print the control flow graph")
     ]
 	in
 	let sources : string list ref = ref [] in
@@ -86,8 +88,24 @@ let main () =
 	
 	if not(!instrument) && ((List.length !sources) > 0) && (!execOptsSutPath = "") then
 		instrument := true;
-		
-	if !instrument then (
+	
+	if !printCFG then (
+		Log.setLogChannel (find Options.keyInstrumentLog);
+		if (List.length !sources) = 0 then
+			Log.error "Did not find any source files\n";
+		if !insOptFutName = "" then 
+			Log.error "Did not find a function to print\n";
+		let source = Instrument.parseAndMergeSources !sources in
+		match (Utils.tryFindFundecFromName source !insOptFutName) with
+		| None -> 
+			Log.error (Printf.sprintf "Could not find function %s\r\n" !insOptFutName)
+		| Some(f) -> (
+				Cfg.computeFileCFG source;
+				Cfg.printCfgFilename (Filename.concat (!Options.austinOutDir) (Printf.sprintf "%s_cfg.dot" f.svar.vname)) f;
+				Log.log ("PrintCFG finished\n")
+			)
+	)	
+	else if !instrument then (
 		Log.setLogChannel (find Options.keyInstrumentLog);
 		if (List.length !sources) = 0 then
 			Log.error "Did not find any source files\n";

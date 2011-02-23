@@ -129,7 +129,7 @@ let handleFUTSetupFunction (source:file) (preamblesource:file) =
 	if !logDone then Log.log "done\n";
 	!ginit
 	
-let mainInstrument (sources : string list) = 
+let parseAndMergeSources (sources : string list) = 
 	let csources = List.filter(fun f -> (endsWith ".c" f))sources in
 	let isources = List.filter(fun f -> (endsWith ".i" f))sources in
 	let regDotC = Str.regexp_string ".c" in
@@ -150,6 +150,10 @@ let mainInstrument (sources : string list) =
 		) else
 			(csources @ isources)
 	in
+	Mergecil.merge (List.map (fun a -> Frontc.parse a ()) toInstrument) "sutMerged.c"
+	
+let mainInstrument (sources : string list) = 
+	
 	let criterion = find ConfigFile.confKeyTDGCriterion in
 	let search = find ConfigFile.confKeyTDGMethod in
 	let traces = ref [] in
@@ -161,10 +165,9 @@ let mainInstrument (sources : string list) =
 	if search = "chc" then
 		traces := ("symbolic"::!traces);
 	
-	let sutSource = Mergecil.merge (List.map (fun a -> Frontc.parse a ()) toInstrument) "sutMerged.c" in
+	let sutSource = parseAndMergeSources sources in
 	let austinPreamble = Frontc.parse (ConfigFile.find Options.keySUTpreamble) () in
-	(*let source = mergeSourceFiles (addSutPreamble toInstrument) "merged.c" in*)
-	
+		
 	Log.log "Preprocessing...";
 	Preprocessor.removeUnsafeCode sutSource;
 	Preprocessor.removeRegisterStorage sutSource;

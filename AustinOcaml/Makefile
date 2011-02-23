@@ -28,7 +28,7 @@ OCAMLINCL := -I ${CILOBJ} -I log/ -I programstructure/ -I testcases/ \
 -I instrumentation/ -I config/ -I ui/ -I searchMethods/objectives/ -I solution/generator/ \
 -I testsuite/
 
-OCAMLSRCS := config/configFile.ml options.ml log/logManager.ml \
+MLSRCS := config/configFile.ml options.ml log/logManager.ml \
 searchMethods/objectives/baseObjValue.ml utils/utils.ml solution/solution.ml \
 searchMethods/objectives/baseObjFunc.ml programstructure/cfginfo.ml \
 searchMethods/baseSearchMethod.ml symbolic/symbolic.ml random/austinRand.ml \
@@ -40,11 +40,12 @@ instrumentation/preprocessor.ml instrumentation/preconditionAnalyser.ml instrume
 instrumentation/testdriver.ml execution/execute.ml instrumentation/instrument.ml \
 ui/commandLineHandler.ml
 
-OCAMLOBJS := ${OCAMLSRCS:%.ml=%.cmx}
+OCAMLSRCS := ${MLSRCS:%.ml=%.mli}
+OCAMLOBJS := ${MLSRCS:%.ml=%.cmx}
 
 TESTOBJS := $(subst ui/commandLineHandler.cmx,,${OCAMLOBJS})
 
-%.cmx : %.ml
+%.cmx %.mli: %.ml
 	${OCC} -o $@ ${OCAMLINCL} -c $<
 
 ${EXE} : ${OCAMLOBJS}
@@ -59,5 +60,5 @@ all : ${EXE} ${TESTEXE}
 clean:
 	-rm -f ${EXE} 
 	-rm -f ${TESTEXE}
-	-rm -f ${OCAMLOBJS} ${OCAMLSRCS:%.ml=%.cmi} ${OCAMLSRCS:%.ml=%.o}
+	-rm -f ${OCAMLOBJS} ${MLSRCS:%.ml=%.cmi} ${MLSRCS:%.ml=%.o}
 	-rm -f testsuite/testSuiteRunner.cmi testsuite/testSuiteRunner.cmx testsuite/testSuiteRunner.o
