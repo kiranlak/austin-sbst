@@ -122,12 +122,17 @@ and compareTypes (t1 :typ) (t2:typ) =
 and compareOffset (off1: offset) (off2: offset) : bool =
 	match off1, off2 with
 	| Field (fld1, off1'), Field (fld2, off2') ->
-			fld1 == fld2 && compareOffset off1' off2'
+			(compareFields fld1 fld2) && compareOffset off1' off2'
+			(*fld1 == fld2 && compareOffset off1' off2'*)
 	| Index (e1, off1'), Index (e2, off2') ->
 	    compareExp e1 e2 && compareOffset off1' off2'
 	| NoOffset, NoOffset -> true
 	| _ -> false
-	
+and compareFields (fld1:fieldinfo) (fld2:fieldinfo) = 
+	fld1 == fld2 ||
+	(fld1.fname = fld2.fname && fld1.fcomp.cname = fld2.fcomp.cname 
+		&& (compareTypes fld1.ftype fld2.ftype) && fld1.fbitfield == fld2.fbitfield)
+			
 and compareLval (lv1: lval) (lv2: lval) : bool =
   lv1 == lv2 ||
   match lv1, lv2 with

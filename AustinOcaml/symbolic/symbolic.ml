@@ -81,6 +81,53 @@ let loadPCfromFile (fileName:string) =
 	pc.conjuncts <- saved.conjuncts;
 	pc.pathExpression <- saved.pathExpression
 	
+let printState (_state) = 
+	let printStackAddress (addr:symStackAddress) = 
+		Printf.sprintf "base=%d, offset=%d\n" addr.hostAddress addr.offsetAddress
+	in
+	let doc = ref ((++) (text "Symbolic State") line) in
+	LvalHashtbl.iter(
+		fun lv symlv -> 
+			let strStackAddr = printStackAddress symlv.symAddr in
+			let strContainingFunc = 
+				match symlv.containingFunc with
+					| None -> "global variable\n"
+					| Some(f) -> Printf.sprintf "local variable in %s\n" f.svar.vname
+			in
+			let strContent = 
+				match symlv.content with
+					| StackAddress(addr) -> (printStackAddress addr)
+					| SymEx(sex) -> 
+						(
+							match sex with
+								| Undef -> "undefined\n"
+								| CilExpr(e) -> Printf.sprintf "%s\n" (Pretty.sprint 255 (Cil.d_exp()e))
+						)
+			in
+			let id = 
+				match lv with
+					| Var vi, _ -> vi.vid
+					| _ -> 0
+			in
+			let str = 
+				Printf.sprintf "%s%sisInput=%s\n%d:%s = %s\n"
+					strStackAddr
+					strContainingFunc
+					(string_of_bool symlv.isInput)
+					id
+					(Pretty.sprint 255 (Cil.d_lval () lv))
+					strContent
+			in
+			doc := (++) (!doc) (text str)
+	)_state;
+	!doc
+		
+let printCurrentState () = 
+	if (List.length !symStackFrameItems) > 0 then (
+		printState (getFrameFromStackFrame(List.hd !symStackFrameItems)).state
+	) else
+		nil
+		
 let tryFindLvalInCurrentStackFrame (l:lval) = 
 	if (List.length !symStackFrameItems) > 0 then (
 		let current = getFrameFromStackFrame (List.hd !symStackFrameItems) in
@@ -100,7 +147,9 @@ let tryFindLvalInStackFrames (l:lval) =
 				try
 					Some(LvalHashtbl.find i.state l)
 				with
-					| Not_found -> search rem
+					| Not_found -> (
+						search rem
+						)
 	in
 	search !symStackFrameItems
 	
@@ -111,6 +160,7 @@ let tryFindStackAddress (l:lval) =
 		| Some(symlv) -> Some(symlv.symAddr)
 	
 exception SymStackAddressFound of lval
+
 let tryFindLvalFromStackAddress (addr:symStackAddress) = 
 	let rec search (items:(fundec option * lval option * symStackFrameItem) list) =
 		match items with
@@ -429,50 +479,6 @@ let symExitFunction (eo:exp option) =
 				(* update l with return value *)
 				updateState [l] fo content
 	)
-
-let printCurrentState () = 
-	let printStackAddress (addr:symStackAddress) = 
-		Printf.sprintf "base=%d, offset=%d\n" addr.hostAddress addr.offsetAddress
-	in
-	if (List.length !symStackFrameItems) > 0 then (
-		let doc = ref ((++) (text "Symbolic State") line) in
-		LvalHashtbl.iter(
-			fun lv symlv -> 
-				let strStackAddr = printStackAddress symlv.symAddr in
-				let strContainingFunc = 
-					match symlv.containingFunc with
-						| None -> "global variable\n"
-						| Some(f) -> Printf.sprintf "local variable in %s\n" f.svar.vname
-				in
-				let strContent = 
-					match symlv.content with
-						| StackAddress(addr) -> (printStackAddress addr)
-						| SymEx(sex) -> 
-							(
-								match sex with
-									| Undef -> "undefined\n"
-									| CilExpr(e) -> Printf.sprintf "%s\n" (Pretty.sprint 255 (Cil.d_exp()e))
-							)
-				in
-				let id = 
-					match lv with
-						| Var vi, _ -> vi.vid
-						| _ -> 0
-				in
-				let str = 
-					Printf.sprintf "%s%sisInput=%s\n%d:%s = %s\n"
-						strStackAddr
-						strContainingFunc
-						(string_of_bool symlv.isInput)
-						id
-						(Pretty.sprint 255 (Cil.d_lval () lv))
-						strContent
-				in
-				doc := (++) (!doc) (text str)
-		)(getFrameFromStackFrame(List.hd !symStackFrameItems)).state;
-		!doc
-	) else
-		nil
 						
 let isValueExp (e : exp) =
   match isInteger e with | None -> isConstant e | _ -> false

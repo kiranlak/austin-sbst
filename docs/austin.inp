@@ -5,7 +5,7 @@
 tdgCriterion = branch
 
 # Search Method (possible values are: random,hc,chc)
-tdgSearchMethod = hc
+tdgSearchMethod = chc
 
 # Log Keys (mandatory)
 logLevel = verbose
