@@ -20,15 +20,18 @@ CILOBJ := ${CILHOME}obj/x86_${OS}/
 ###############################
 TESTEXE := testRunner
 EXE := austin
-OCC := ocamlopt
-#OCC := /usr/local/bin/ocamlopt
 
-OCAMLINCL := -I ${CILOBJ} -I log/ -I programstructure/ -I testcases/ \
+#OCAMLOPT=/usr/local/bin/ocamlopt
+OCAMLOPT=ocamlopt
+OCAMLDEP=ocamldep
+INCLUDES=-I ${CILOBJ} -I log/ -I programstructure/ -I testcases/ \
 -I searchMethods/ -I random/ -I solution/ -I symbolic/ -I execution/ -I utils/ \
 -I instrumentation/ -I config/ -I ui/ -I searchMethods/objectives/ -I solution/generator/ \
 -I testsuite/
 
-MLSRCS := config/configFile.ml options.ml log/logManager.ml \
+OCAMLOPTFLAGS=$(INCLUDES) # add other options for ocamlopt here
+
+SOURCES=config/configFile.ml options.ml log/logManager.ml \
 searchMethods/objectives/baseObjValue.ml utils/utils.ml solution/solution.ml \
 searchMethods/objectives/baseObjFunc.ml programstructure/cfginfo.ml \
 searchMethods/baseSearchMethod.ml symbolic/symbolic.ml random/austinRand.ml \
@@ -40,25 +43,37 @@ instrumentation/preprocessor.ml instrumentation/preconditionAnalyser.ml instrume
 instrumentation/testdriver.ml execution/execute.ml instrumentation/instrument.ml \
 ui/commandLineHandler.ml
 
-OCAMLSRCS := ${MLSRCS:%.ml=%.mli}
-OCAMLOBJS := ${MLSRCS:%.ml=%.cmx}
+COMMON_OBJS=str.cmxa unix.cmxa nums.cmxa cil.cmxa
+AUSTIN_OBJS=${SOURCES:%.ml=%.cmx}
 
-TESTOBJS := $(subst ui/commandLineHandler.cmx,,${OCAMLOBJS})
+TESTRUNNER_OBJS=$(subst ui/commandLineHandler.cmx,,${SOURCES:%.ml=%.cmx}) testsuite/testSuiteRunner.cmx
 
-%.cmx %.mli: %.ml
-	${OCC} -o $@ ${OCAMLINCL} -c $<
+# Common rules
+.SUFFIXES: .ml .mli .cmo .cmi .cmx
 
-${EXE} : ${OCAMLOBJS}
-	${OCC} -o ${EXE} ${OCAMLINCL} str.cmxa unix.cmxa nums.cmxa cil.cmxa ${OCAMLOBJS} 
+.mli.cmi:
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -c $<
 
-	
-${TESTEXE} : ${TESTOBJS} testsuite/testSuiteRunner.cmx
-	${OCC} ${OCAMLINCL} str.cmxa unix.cmxa nums.cmxa cil.cmxa ${TESTOBJS} testsuite/testSuiteRunner.cmx -o ${TESTEXE}
+.ml.cmx:
+	$(OCAMLOPT) $(OCAMLOPTFLAGS) -c $<
+        
+#%.cmx %.mli: %.ml
+#	${OCAMLOPT} -o $@ ${OCAMLOPTFLAGS} -c $<
+
+${EXE} : ${AUSTIN_OBJS}
+	$(OCAMLOPT) -o ${EXE} $(OCAMLOPTFLAGS) $(COMMON_OBJS) $(AUSTIN_OBJS)
+
+${TESTEXE} : ${TESTRUNNER_OBJS}
+	$(OCAMLOPT) -o ${TESTEXE} $(OCAMLOPTFLAGS) -I testsuite/ $(COMMON_OBJS) ${TESTRUNNER_OBJS} 
+
+#instrumentation/instrument.cmx ui/commandLineHandler.cmx testsuite/testSuiteRunner.cmx: instrumentation/preconditionAnalyser.cmx instrumentation/preconditionAnalyser.mli
+#solution/generator/solutionGenerator.cmx : solution/generator/preconditions.cmx
+#searchMethods/symbolicHillClimbSearch.cmx searchMethods/hillClimbSearch.cmx searchMethods/randomSearch.cmx execution/execute.cmx: solution/generator/solutionGenerator.cmx
 	
 all : ${EXE} ${TESTEXE}
 	
 clean:
 	-rm -f ${EXE} 
 	-rm -f ${TESTEXE}
-	-rm -f ${OCAMLOBJS} ${MLSRCS:%.ml=%.cmi} ${MLSRCS:%.ml=%.o}
+	-rm -f ${SOURCES:%.ml=%.cmx} ${SOURCES:%.ml=%.cmi} ${SOURCES:%.ml=%.o}
 	-rm -f testsuite/testSuiteRunner.cmi testsuite/testSuiteRunner.cmx testsuite/testSuiteRunner.o

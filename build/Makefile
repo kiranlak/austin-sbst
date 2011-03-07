@@ -15,6 +15,8 @@ clean :
 	
 
 release : 
+	cd ../AustinLib ; ${MAKE} -f ../AustinLib/Makefile all
+	cd ../AustinOcaml ; ${MAKE} -f ../AustinOcaml/Makefile all
 	-rm -rf austin
 	-rm -f austin-$(OS)-$(ARCH).tar
 	mkdir austin

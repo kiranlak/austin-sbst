@@ -11,6 +11,13 @@ module Log = LogManager
 
 let precons = ref []
 
+let printPreconditions() = 
+	List.iter(
+		fun pre -> 
+			Log.log (Printf.sprintf "precondition:%s\n"
+				(Pretty.sprint 255 (Cil.d_exp()pre)));
+	)!precons
+	
 let loadPreconditions () = 
 	let inchan = open_in_bin (ConfigFile.find Options.keyPreconditionFile) in
   precons := (Marshal.from_channel inchan : exp list);
@@ -21,10 +28,9 @@ class expVisitor (currentLval : lval) (found:bool ref) = object
 	
 	method vlval (l:lval) = 
 		if (compareLvalByName l currentLval) then (
-			found := true;
-			SkipChildren
-		) else
-			DoChildren
+			found := true
+		);
+		SkipChildren
 end
 
 let rec getConstantFromExp (e:exp) = 

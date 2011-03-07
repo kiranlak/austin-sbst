@@ -221,7 +221,7 @@ let mainInstrument (sources : string list) =
 				Log.log "done\n";
 				
 				Log.log "Saving any preconditions (binary)...";
-				collectPreconditions sutSource (ConfigFile.find Options.keyPreconditionFile);
+				collectPreconditions sutSource !insOptFutName (ConfigFile.find Options.keyPreconditionFile);
 				Log.log "done\n";
 				
 				Log.log "Adding trace instrumentations...";

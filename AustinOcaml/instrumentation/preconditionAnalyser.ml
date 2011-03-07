@@ -4,10 +4,17 @@ open Cil
 module Log = LogManager
 
 let precons = ref []
-	
+let strFUT = ref ""
+
 class preconVisitor = object(this)
 	inherit nopCilVisitor
-	
+
+	method vfunc (f:fundec) = 
+		if (compare f.svar.vname !strFUT) <> 0 then 
+			SkipChildren
+		else
+			DoChildren
+				
 	method vinst (i:instr) = 
 		match i with
 			| Call(lo, fname, args, _) -> 
@@ -36,7 +43,7 @@ class preconVisitor = object(this)
 end
 
 let savePreconditionsToFile (outname:string) = 
-	let rev = List.rev !precons in
+	let rev : exp list = List.rev !precons in
 	let outchan = open_out_bin outname in
   Marshal.to_channel outchan rev [];
   close_out outchan
@@ -54,7 +61,8 @@ class updateAAProto = object(this)
 				) else DoChildren
 			| _ -> DoChildren
 end
-let collectPreconditions (source:file) (outname:string) = 
+let collectPreconditions (source:file) (fut:string) (outname:string) = 
+	strFUT := fut;
 	let vis = new preconVisitor in
 	visitCilFile vis source;
 	savePreconditionsToFile outname;
