@@ -25,7 +25,7 @@ release :
 	cp ../AustinLib/libAustinLib.a austin/AustinLib/
 	mkdir austin/bin
 	cp ../AustinOcaml/austin austin/bin/
-	cp ../AustinOcaml/testRunner austin/bin/
+	cp ../AustinOcaml/testSuiteRunner austin/bin/
 	mkdir austin/docs
 	cp ../docs/* austin/docs/
 	tar -cf austin-$(OS)-$(ARCH).tar austin	
