@@ -1442,6 +1442,8 @@ extern void Austin__Assert(int);
 extern void Austin__Raise(int);
 extern void Austin__ClearWorkItems();
 extern void Austin__Assume(unsigned int, ...);
+extern void Austin__Assume__Init(unsigned int, ...);
+extern void Austin__Assume__Array(unsigned int, ...);
 jmp_buf __AUSTIN__exit_testobject;
 volatile sig_atomic_t __AUSTIN__FATAL = 0;
 volatile sig_atomic_t __AUSTIN__TIMEOUT = 0;

@@ -3,8 +3,8 @@ open Cil
 open Printf
 open Options
 open Utils
-open ConfigFile
-open PreconditionAnalyser
+open Preconditions
+open CheckUnsupportedFeatures
 	
 module Log = LogManager
 
@@ -20,10 +20,6 @@ let marshalFundec (source : file) (f : fundec) (fileName : string) =
   Marshal.to_channel outchan f [];
   close_out outchan
 			
-let removeAustinAttributes (source : file) = 
-	let vis = new removeAustinAttributesVisitor in
-	visitCilFileSameGlobals vis source
-
 let addTraceInstrumentation (source:file) (f:fundec) (testDriverFuncNames:string list) (traces:string list) = 
 	let symprotos,symPostDrv = 
 		if (List.mem "symbolic" traces) then (
@@ -99,45 +95,15 @@ class insertFUTSetupCall (ins:instr list) = object(this)
 				)
 			| _ -> SkipChildren
 end	
-let handleFUTSetupFunction (source:file) (preamblesource:file) = 
-	let ginit = ref None in
-	let logDone = ref true in
-	Log.log "Checking for global initializer function...";
-	let newglobals = List.filter (fun g -> 
-			match g with
-				| GFun(f,_) -> (
-						if f.svar.vname = "AUSTIN__FUT__SETUP" then (
-							match (tryFindFundecFromName preamblesource "main") with
-								| None -> Log.warn "Failed to find main function in sut preamble\n";false
-								| Some(main) -> (
-										Log.log "found\nInserting call to global initializer...";
-										let i = Call(None, Lval(var f.svar), [], locUnknown) in
-										let vis = new insertFUTSetupCall [i] in
-										ignore(visitCilFunction vis main);
-										Log.log "done\nAdding global initializer prototype...";
-										preamblesource.globals <- GVarDecl (f.svar, locUnknown) :: preamblesource.globals;
-										ginit := Some f;
-										Log.log "done\n";
-										logDone := false;
-										false
-								  )
-						) else true
-					)
-				| _ -> true
-		) source.globals in
-	source.globals <- newglobals;
-	if !logDone then Log.log "done\n";
-	!ginit
-	
 let parseAndMergeSources (sources : string list) = 
 	let csources = List.filter(fun f -> (endsWith ".c" f))sources in
 	let isources = List.filter(fun f -> (endsWith ".i" f))sources in
 	let regDotC = Str.regexp_string ".c" in
 	let toInstrument = 
 		if (List.length csources) > 0 && !insOptPPFiles then (
-			let compiler = find ConfigFile.confKeyCompiler in
-			let includes = find ConfigFile.confKeyCompilerIncl in
-			let ppOptions = find ConfigFile.confKeyCompilerOpts in
+			let compiler = ConfigFile.find Options.keyCompiler in
+			let includes = ConfigFile.find Options.keyCompilerIncl in
+			let ppOptions = ConfigFile.find Options.keyCompilerOpts in
 			((List.map(
 				fun f -> 
 					Log.log (Printf.sprintf "Executing preprocessor command: %s\n" (compiler^" "^includes^" "^ppOptions^" "^f));
@@ -154,18 +120,24 @@ let parseAndMergeSources (sources : string list) =
 	
 let mainInstrument (sources : string list) = 
 	
-	let criterion = find ConfigFile.confKeyTDGCriterion in
-	let search = find ConfigFile.confKeyTDGMethod in
+	let criterion = ConfigFile.find Options.keyTDGCriterion in
+	let search = ConfigFile.find Options.keyTDGMethod in
 	let traces = ref [] in
 	if criterion = "branch" then
 		traces := ("branch"::!traces)
 	else
 		Log.error (Printf.sprintf "Unrecognized tdgCriterion:%s\n" criterion);
 	
-	if search = "chc" then
+	if search = "chc" then (
 		traces := ("symbolic"::!traces);
+		Preprocessor.addExplicitReturnStmt := true;
+	);
 	
 	let sutSource = parseAndMergeSources sources in
+	
+	if hasUnsupportedFeature sutSource then
+		Log.error "The source file(s) contains unsupported features and cannot be tested by Austin\n";
+	
 	let austinPreamble = Frontc.parse (ConfigFile.find Options.keySUTpreamble) () in
 		
 	Log.log "Preprocessing...";
@@ -173,6 +145,7 @@ let mainInstrument (sources : string list) =
 	Preprocessor.removeRegisterStorage sutSource;
 	Preprocessor.renameMain sutSource.globals;
 	Preprocessor.convertInstrToStmt sutSource;
+	Preprocessor.insertExplicitReturnStatement sutSource;
 	Log.log "done\n";
 	
 	match (tryFindFundecFromName sutSource !insOptFutName) with
@@ -184,17 +157,11 @@ let mainInstrument (sources : string list) =
 				removeLogFiles !Options.austinOutDir;
 				removeDatFiles !Options.austinOutDir;
 				Log.log "done\n";
-				
-				let globalInit = handleFUTSetupFunction sutSource austinPreamble in
-						
+									
 				Log.log "Generating test driver...\n";
 				let drv = Testdriver.createTestDriver f sutSource in
 				let testDriverFuncNames = Testdriver.addAustinFunctions sutSource in
 				Log.log "Done test driver\n";
-					
-				Log.log "Removing austin input attributes...";
-				removeAustinAttributes sutSource;
-				Log.log "done\n";
 				
 				Log.log "Adding function prototypes...";
 				sutSource.globals <- ((!Testdriver.globalVariables) @ sutSource.globals);
@@ -221,7 +188,7 @@ let mainInstrument (sources : string list) =
 				Log.log "done\n";
 				
 				Log.log "Saving any preconditions (binary)...";
-				collectPreconditions sutSource !insOptFutName (ConfigFile.find Options.keyPreconditionFile);
+				collectPreconditions sutSource f;
 				Log.log "done\n";
 				
 				Log.log "Adding trace instrumentations...";
@@ -238,8 +205,6 @@ let mainInstrument (sources : string list) =
 				Log.log "Removing unused declarations...";
 				Rmtmps.removeUnusedTemps source;
 				Log.log "done\n";
-				
-				source.globinit <- globalInit;
 				
 				(* add SymexTestDriver *)
 				saveSourceToFile source (ConfigFile.find Options.keyInstrumentedSource)

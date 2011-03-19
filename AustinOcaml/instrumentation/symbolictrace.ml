@@ -88,14 +88,6 @@ let mkOffsetOfExpr (e:exp) =
 			(
 				let _,offset,_ = Utils.addrAndBitOffset l in
 				offset
-				(*match (lh,lo) with
-					| Var vi, Field _ -> integer (fst(bitsOffset vi.vtype lo))
-					| Mem e', Field _ -> integer (fst(bitsOffset (typeOf e') lo))
-					| _,_ -> Cil.zero*)
-				(*match (lh,lo) with
-					| Var vi, _ -> integer (fst(bitsOffset vi.vtype lo))
-					| Mem e', _ -> 
-						integer (fst(bitsOffset (typeOf e') lo))*)
 			)
 
 let rec mkValueExpr (t:typ) (e:exp) = 
@@ -103,13 +95,7 @@ let rec mkValueExpr (t:typ) (e:exp) =
 		| TVoid _-> Const(CStr("d")), (mkIntValueCast Cil.zero)
 		| TInt _ -> Const(CStr("d")), (mkIntValueCast e)
 		| TFloat _ -> Const(CStr("f")), (mkFloatValueCast e)
-		| TPtr(t', _) -> 
-			(*
-			if not(isPointerType (unrollType t')) &&
-				 isPointerDerefEx e then (
-				mkValueExpr t' e
-			) else *)
-				Const(CStr("p")), (mkPointerValueCast e)
+		| TPtr(t', _) -> Const(CStr("p")), (mkPointerValueCast e)
 		| TArray _ -> Const(CStr("d")), (mkIntValueCast Cil.zero)
 		| TFun _ -> Const(CStr("d")), (mkIntValueCast Cil.zero)
 		| TNamed(ti, _) -> mkValueExpr ti.ttype e
@@ -132,7 +118,6 @@ let rec mkFormatStringAndValuesFromExp (e:exp) =
 						match (lh,lo) with
 							| Mem e', NoOffset -> mkAddrCast e' (* e.g. *p -> p *)
 							| Mem e', Field(fi, _) -> 
-								(* either p->next in which case p->next or p->v in which case 0 *)
 								if (isPointerType (unrollType fi.ftype)) then mkAddrCast e else mkAddrCast Cil.zero
 							| Mem e', Index _ -> mkAddrCast e
 							| Var vi, _ -> mkAddrCast e
@@ -229,7 +214,6 @@ class symInstrVisitor (ignoreList:string list) (source:file) = object(this)
 											let postI = this#mkAustLogReturnUpdate s.sid 1 lhs in
 											pushInstrBeforeStmt s [preI];
 											appendInstr s [postI]
-											(*s.skind <- Instr([preI;i;postI])*)
 								)
 							)
 						| _ -> ()
@@ -248,31 +232,35 @@ class symInstrVisitor (ignoreList:string list) (source:file) = object(this)
 				let insertCaseLoggingFunctions () = 
 					let index = ref 0 in
 					let caseswodef = removeDefaultCase cases in
-					let len, args = this#getArgsForBranchingNode (BinOp(Eq, e, e, (typeOf e))) in
 					List.iter(
 						fun caseStmt ->
-							(* I am not interested in case labels, because at runtime I just want to know the value of e *)
+							let lexpr = 
+								let _l = getSwitchCaseExpressions caseStmt in
+								if (List.length _l) = 0 then Cil.zero
+								else List.hd _l
+							in
+							let len, args = this#getArgsForBranchingNode (BinOp(Eq, e, lexpr, (typeOf e))) in
+							
 							let i' = this#mkAustinLogBranch s.sid (!index) len args in
-							pushInstrBeforeStmt caseStmt [i'];(*
-							let vis = new insertInstrVisitor i' in
-							ignore(visitCilStmt vis caseStmt);*)
+							pushInstrBeforeStmt caseStmt [i'];
 							incr index
 					) caseswodef;
 					(
 						match (tryGetDefaultCase cases) with
 							| None -> ()
 							| Some(s') -> 
+								let len, args = this#getArgsForBranchingNode (BinOp(Eq, e, Cil.zero, (typeOf e))) in
 								let i' = this#mkAustinLogBranch s.sid (!index) len args in
 								pushInstrBeforeStmt s' [i']
-								(*let vis = new insertInstrVisitor i' in
-								ignore(visitCilStmt vis s');*)
 					)
 				in
 				ChangeDoChildrenPost(s, fun s' -> insertCaseLoggingFunctions();s')
 			| Return(eo, _) -> 
 				(
 					match eo with
-						| None -> ()
+						| None -> 
+							let i' = this#mkAustLogReturn s.sid 0 [] in
+							pushInstrBeforeStmt s [i']
 						| Some(e) -> 
 							let expr = mkFormatStringAndValuesFromExp e in
 							let i' = this#mkAustLogReturn s.sid 1 expr in

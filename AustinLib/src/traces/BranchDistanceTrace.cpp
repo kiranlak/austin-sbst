@@ -46,11 +46,12 @@ extern "C" void Austin__SendBranchDistances(unsigned int fid, unsigned int nid,
 
 	bdtrace->Trace::OpenTraceFile();
 
-	bdtrace->ofs << /*bdtrace->key << */ fid << bdtrace->sep << nid << bdtrace->sep << index << bdtrace->sep;
+	bdtrace->ofs << fid << bdtrace->sep << nid << bdtrace->sep << index << bdtrace->sep;
 
 	for (unsigned int i = 0; i < values; i++)
 	{
-		bdtrace->ofs << fixed << va_arg(ap, long double) << bdtrace->sep;
+		/**TODO: Make setprecision configurable parameter */
+		bdtrace->ofs << fixed << setprecision(16) << va_arg(ap, long double) << bdtrace->sep;
 	}
 
 	bdtrace->ofs << endl;
@@ -193,17 +194,14 @@ long double Austin__EvalEquals__LongDouble(long double lhs, long double rhs)
 long double Austin__EvalNotEqual__Void(void* lhs, void* rhs)
 {
 	if(lhs != rhs) return 0;
-	else return 1;
+	else return FAILURE_CONSTANT;
 }
 long double Austin__EvalNotEqual__Char(char lhs, char rhs)
 {
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__Char(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__Char(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__SChar(signed char lhs, signed char rhs)
@@ -211,10 +209,7 @@ long double Austin__EvalNotEqual__SChar(signed char lhs, signed char rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__SChar(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__SChar(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__UChar(unsigned char lhs, unsigned char rhs)
@@ -222,10 +217,7 @@ long double Austin__EvalNotEqual__UChar(unsigned char lhs, unsigned char rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__UChar(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__UChar(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__Bool(bool lhs, bool rhs)
@@ -237,10 +229,7 @@ long double Austin__EvalNotEqual__Int(int lhs, int rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__Int(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__Int(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__UInt(unsigned int lhs, unsigned int rhs)
@@ -248,10 +237,7 @@ long double Austin__EvalNotEqual__UInt(unsigned int lhs, unsigned int rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__UInt(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__UInt(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__Short(short lhs, short rhs)
@@ -259,10 +245,7 @@ long double Austin__EvalNotEqual__Short(short lhs, short rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__Short(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__Short(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__UShort(unsigned short lhs, unsigned short rhs)
@@ -270,10 +253,7 @@ long double Austin__EvalNotEqual__UShort(unsigned short lhs, unsigned short rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__UShort(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__UShort(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__Long(long lhs, long rhs)
@@ -281,10 +261,7 @@ long double Austin__EvalNotEqual__Long(long lhs, long rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__Long(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__Long(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__ULong(unsigned long lhs, unsigned long rhs)
@@ -292,10 +269,7 @@ long double Austin__EvalNotEqual__ULong(unsigned long lhs, unsigned long rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__ULong(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__ULong(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__LongLong(long long lhs, long long rhs)
@@ -303,10 +277,7 @@ long double Austin__EvalNotEqual__LongLong(long long lhs, long long rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__LongLong(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__LongLong(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__ULongLong(unsigned long long lhs, unsigned long long rhs)
@@ -314,10 +285,7 @@ long double Austin__EvalNotEqual__ULongLong(unsigned long long lhs, unsigned lon
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__ULongLong(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__ULongLong(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__Float(float lhs, float rhs)
@@ -325,10 +293,7 @@ long double Austin__EvalNotEqual__Float(float lhs, float rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__Float(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__Float(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__Double(double lhs, double rhs)
@@ -336,10 +301,7 @@ long double Austin__EvalNotEqual__Double(double lhs, double rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__Double(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__Double(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 long double Austin__EvalNotEqual__LongDouble(long double lhs, long double rhs)
@@ -347,10 +309,7 @@ long double Austin__EvalNotEqual__LongDouble(long double lhs, long double rhs)
 	if(lhs != rhs) return 0;
 	else
 	{
-		//default is return 1, but I return min(>,<)
-		long double o1 = Austin__EvalLessThan__LongDouble(lhs, rhs);
-		long double o2 = Austin__EvalGreaterThan__LongDouble(lhs, rhs);
-		return Austin__Min(o1, o2);
+		return FAILURE_CONSTANT;
 	}
 }
 

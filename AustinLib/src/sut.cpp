@@ -68,7 +68,7 @@ void MemoryManager::FreeMallocs()
 
 SolutionManager::SolutionManager(const string& outDir)
 {
-	/* load ocaml solution?? */
+
 }
 SolutionManager::~SolutionManager()
 {
@@ -129,9 +129,8 @@ void SolutionManager::ClearWorklist()
 	for(unsigned int i = 0; i < size; i++)
 	{
 		WorkItem item = this->delayedInputInitializations.at(i);
-
 		map<int, PointerInfo>::const_iterator it;
-		it = this->pointerLocs.find(item.sourceId);
+		it = this->pointerLocs.find(item.targetId);
 		if(it == this->pointerLocs.end())
 			continue;
 		else
@@ -199,8 +198,8 @@ extern "C" void Austin__Setup(int argc, char** argv)
 	traceManager = new TraceManager(outDir);
 	traceManager->CreateAllTraces();
 	InitializeOcamlRuntime(outDir, libDir);
+	/**TODO: add alarm timeout when executing sut */
 	//alarm(sutTimeout);
-	//alarm(5);
 }
 extern "C" void Austin__Teardown()
 {
@@ -262,6 +261,41 @@ extern "C" void Austin__Assume(unsigned int argc, ...)
 	{
 		exit(255);
 	}
+}
+extern "C" void Austin__Assume__Init(unsigned int argc, ...)
+{
+	static bool initialCheck = true;
+
+	if(initialCheck)
+	{
+		va_list ap;
+
+		va_start(ap, argc);
+
+		bool error = false;
+
+		for (unsigned int i = 0; i < argc; i++)
+		{
+			if(!va_arg(ap, int))
+			{
+				error = true;
+				break;
+			}
+		}
+
+		va_end(ap);
+
+		if(error)
+		{
+			exit(254);
+		}
+	}
+
+	initialCheck = false;
+}
+extern "C" void Austin__Assume__Array(unsigned int len, ...)
+{
+
 }
 extern "C" void Austin__ClearWorkItems()
 {

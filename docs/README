@@ -16,9 +16,9 @@ Building and installing it:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To install from the subversion repository: 
 
- - Install the Ocaml runtime system (http://caml.inria.fr/download.en.html)
+ - Install the Ocaml runtime system version 3.11.2 or higher (http://caml.inria.fr/download.en.html)
  
- - Install CIL (http://sourceforge.net/projects/cil)
+ - Install CIL version 1.3.7 (http://sourceforge.net/projects/cil)
  
  - Check out the code from the SVN, following the instructions at 
    http://code.google.com/p/austin-sbst/source/checkout
@@ -61,8 +61,7 @@ directory. See austin.inp in the docs folder for an example.
 You then need to follow these steps to run AUSTIN:
 
  - Instrument your program (i.e. the source files you want to test). You can supply multiple source files
-   from the command line or use the * wildcard. However, all source files need to be in the same directory,
-   that is you cannot have source files in sub-directories
+   from the command line or use the * wildcard.
  
  - Compile and link the instrumented files (use at least these linker flags: -lAustinLib -ldl -lm). The linking
    has to be done with a C++ compiler
@@ -76,7 +75,9 @@ To instrument your source files a.c, b.c and d.c call
 
  ./austin -i -fut function-to-test -conf <path to austin configuration file> a.c b.c d.c
  
-AUSTIN will produce a single instrumented source file (called austin_instrumented.c). To compile the instrumented source do
+AUSTIN will produce a single instrumented source file (called austin_instrumented.c). Compile the instrumented 
+source with a C compiler e.g.
+
  gcc -c austin_instrumented.c
  
 Then link the object file using a C++ compiler
@@ -150,19 +151,36 @@ void foo(int* p, int a, int b)
    ...
 }
 
+Sometimes you may want to restrict the starting value of a function, e.g. in the case of recursive functions. 
+In this case using Austin__Assume will not work, because it will enforce the condition everytime the function 
+is executed. Use calls to Austin__Assume__Init(unsigned int, ...) to restrict the values of a variable the first
+time a function is called. 
+
+Example:
+void foo(int a)
+{
+   Austin__Assume__Init(1, a < 10);
+   if ( a < 20 )
+   	foo(a + 1);
+   ...
+}
+
+In this example, the condition "a < 10" is only enforce the first time the function is executed; i.e. the formal
+parameter "a" is initialised with a value less than 10.
+
+
 Classifying pointer input as array:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 In C it is not always possible to determine from an input's type signature if that input denotes an 
-array. You can tell AUSTIN to treat inputs as an array by adding the (gcc style) attribute
+array. You can tell AUSTIN to treat inputs as an array by adding calls to 
+Austin__Assume__Array(unsigned int,...), where the first argument specifies the length of the array.
  
- __attribute__((austin__array (X)))
- 
-where the X specifies the length of the array.
-
-Example of declaring input int* p as int p[3]:
-
-void foo(int* __attribute__((austin__array (3))) p)
+Example:
+void foo(int* p, int a, int b)
 {
-  ...
+   Austin__Assume__Array(5, p);
+   ...
 }
+ 
+In this example, the formal parameter p is declared to be a 5 integer array.
  

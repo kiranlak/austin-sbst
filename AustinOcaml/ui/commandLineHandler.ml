@@ -53,6 +53,7 @@ let main () =
 		; ("-tid", Arg.Int(fun i -> execOptsTargetId:=i), "set target branch id (node id in Cil CFG)")
 		; ("-tindx", Arg.Int(fun i -> execOptsTargetIndex:=i), "set target branch index")
 		; ("-maxEvals", Arg.Int(fun i -> execOptsMaxEvals:=i), "set maximum number of fitness evaluations to use")
+		; ("-ignoreCollateral", Arg.Set execOptIgnoreCollateral, "attempt each branch individually, even if it has been covered collaterally already")
 		; ("", Arg.Unit(fun() -> ()), "Other Options:")
 		; ("-keep", Arg.Set keepOps, "keep logical operators")
 		; ("-printCFG", Arg.String(fun s -> insOptFutName:=s; printCFG := true), "<name of function> - print the control flow graph")

@@ -8,12 +8,11 @@ open Unix
 
 module Log = LogManager
 
-type branchNode = 
-{
-	funcId : int;
-	stmtId : int;
-	index  : int;
-}
+type branchNode = int*int*int
+
+let getFid (fid,_,_) = fid
+let getSid (_,sid,_) = sid
+let getIndx(_,_,indx) = indx
 
 type branchTraceNode = 
 {
@@ -24,10 +23,26 @@ type branchTraceNode =
 	criticalEdges : int list;
 }
 
+module IntMap = Map.Make (struct
+                              type t = branchNode
+                              let compare (fid1,sid1,indx1) (fid2,sid2,indx2) = 
+																let fid = compare fid1 fid2 in
+																if fid = 0 then (
+																	let sid = compare sid1 sid2 in
+																	if sid = 0 then (
+																		compare indx1 indx2
+																	) else sid
+																) else fid
+                            end)
 exception Not_forked
 class branchCoverageObjFunc (pathToSut:string) = object(this)
 	inherit baseObjFunc as super
 	
+	val logTestCases = 
+		match (ConfigFile.hasKey Options.keyLogTestCases) with
+			| None -> false
+			| Some(status) -> status = "true"
+			
 	val mutable logSerendipitousCoverage : bool = true
 	val mutable coveredNewBranches : bool = false
 	
@@ -38,7 +53,7 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 	val mutable targetDependent : PS.t = PS.empty
 	
 	val mutable revbranchTrace : branchTraceNode list = []
-	val coverageInfo : (branchNode, (int*int)) Hashtbl.t = Hashtbl.create Options.hashtblInitSize
+	val mutable coverageInfo : (int*int) IntMap.t = IntMap.empty
 	
 	val optimalFitness = mkBranchCovObjVal 0 0.0
 	val worstFitness = mkBranchCovObjVal max_int max_float
@@ -60,43 +75,63 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 			if current >= total then
 				res
 			else (
-				let bi = {funcId=futid;stmtId=sid;index=current} in
-				let cov,exec = 
+				let cov,evals,exec = 
 					try
-						let cnt = Hashtbl.find coverageInfo bi in
-						(1,cnt)
+						let (evals,cnt) = IntMap.find (futid,sid,current) coverageInfo in
+						(1,evals,cnt)
 					with
-						| Not_found -> (0,(0,0))
+						| Not_found -> (0,(-1),0)
 				in
-				searchIndices sid (current + 1) total ((current,cov,exec)::res)
+				searchIndices sid (current + 1) total ((current,cov,evals,exec)::res)
 			)
 		in
 		List.iter(
 			fun (sid,indices) -> 
 				List.iter(
-					fun (indx,cov,(fitnessEvals,exc)) -> 
-						output_string oc (Printf.sprintf "%d,%d,%d,%d,%d\n" sid indx cov fitnessEvals exc)
+					fun (indx,cov,evals,exec) -> 
+						output_string oc (Printf.sprintf "%d,%d,%d,%d,%d\n" sid indx cov evals exec)
 				)(searchIndices sid 0 indices [])
 		)allTargets;
 		close_out oc
 		
-	
-	method getCoveredBranchCount (futid:int) = 
-		if futid = (-1) then
-			Hashtbl.length coverageInfo
-		else (
-			Hashtbl.fold(
-				fun bn cnt res ->
-					if bn.funcId = futid then
-						res + 1
+	method getCoveredBranchCount (tfid:int) (tid:int) (tindx:int) = 
+		IntMap.fold(
+			fun (fid,sid,indx) (fevals,exec) (tcnt,cnt) ->
+				let tcnt' = tcnt + 1 in
+				if tid <> (-1) && tindx <> (-1) then (
+					(* we have a target stmt and target branch *)
+					if tid = sid && tindx = indx then 
+						(tcnt',cnt + 1)
 					else
-						res			 
-			)coverageInfo 0
-		)
+						(tcnt',cnt)
+				) else if tid <> (-1) && tindx = (-1) then (
+					(* we have a target stmt and all branches of that stmt *)
+					if tid = sid then 
+						(tcnt',cnt + 1)
+					else
+						(tcnt',cnt)
+				)	else if tfid = (-1) && tid <> (-1) then (
+					(* we have no target stmt but target branches, e.g. all true *)
+					if tindx = indx then 
+						(tcnt',cnt + 1)
+					else
+						(tcnt',cnt)
+				) else if tfid <> (-1) && tid <> (-1) then (
+					(* we have target branches in a particular function *)
+					if tfid = fid && tindx = indx then 
+						(tcnt',cnt + 1)
+					else
+						(tcnt',cnt)
+				) else (
+					if tfid = fid then
+						(tcnt',cnt + 1)
+					else
+						(tcnt', cnt) 
+				)		 
+		)coverageInfo (0,0)
 	
 	method hasTargetBeenCovered (fid:int) (tid:int) (indx:int) = 
-		let node = 	{funcId=fid;stmtId=tid;index=indx} in
-		Hashtbl.mem coverageInfo node
+		IntMap.mem (fid,tid,indx) coverageInfo
 		
 	method private normalizeBranchDistance (dist:float) = 
 		1.0 -. (1.001 ** (-.dist))
@@ -127,9 +162,7 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 						for cnt = 3 to ((List.length items) - 1) do
 							dist := ((float_of_string (List.nth items cnt))::!dist)
 						done;
-						let node = 
-							{funcId=fid;stmtId=sid;index=indx}
-						in
+						let node = (fid,sid,indx) in
 						let critical, appLevel, edges = 
 							if sid = targetStmtId then
 								true,0,[]
@@ -146,13 +179,13 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 						revbranchTrace <- (btracenode::revbranchTrace);
 						(
 							try
-								let fevals,cnt = Hashtbl.find coverageInfo node in
-								Hashtbl.replace coverageInfo node (fevals,(cnt + 1))
+								let fevals,cnt = IntMap.find node coverageInfo in
+								coverageInfo <- IntMap.add node (fevals,(cnt + 1)) coverageInfo
 							with
 								| Not_found -> 
 									(
 										coveredNewBranches <- true;
-										Hashtbl.add coverageInfo node (currentEvaluations,1)
+										coverageInfo <- IntMap.add node (currentEvaluations,1) coverageInfo 
 									)
 						);
 			    done
@@ -184,10 +217,10 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 							else
 								(optimalFitness,true)
 						| n::rem -> 
-							if (n.isCritical) && (not(List.exists(fun i -> n.node.index = i)n.criticalEdges)) then (
+							if (n.isCritical) && (not(List.exists(fun i -> (getIndx n.node) = i)n.criticalEdges)) then (
 								Log.debug (
 									Printf.sprintf "branch node %d index %d is last critical branching node, applevel=%d\n" 
-									n.node.stmtId n.node.index n.approachLevel);
+									(getSid n.node) (getIndx n.node) n.approachLevel);
 								let fval = mkBranchCovObjVal n.approachLevel (getMinDistance n) in
 								if (compareObjVal fval optimalFitness) <= 0 then 
 									(optimalFitness, true)
@@ -218,7 +251,15 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 			match status with
 				| WEXITED(code) -> 
 					Log.log (Printf.sprintf "Done SUT (exit code = %d)\n" code);
-					if code = 0 then (
+					if code = 255 then (
+						Log.warn "Precondition violation\n";
+						sutException <- true;
+						true
+					) else if code = 254 then (
+						Log.warn "Initialization condition violation\n";
+						sutException <- true;
+						true
+					) else if code = 0 then (
 						(* OK *)
 						sutException <- false;
 						false
@@ -232,9 +273,9 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 						sutException <- true;
 						if signal == Sys.sigalrm then (
 							Log.warn "SUT timeout signal\n"
-						) else if signal == Sys.sigabrt then(
+						) else if signal == Sys.sigabrt then (
 							Log.warn "SUT abort signal\n"
-						) else if signal == Sys.sigsegv then(
+						) else if signal == Sys.sigsegv then (
 							Log.warn (Printf.sprintf "SUT segfault (%d)\n" signal)
 						) else (
 							Log.warn (Printf.sprintf 
@@ -260,13 +301,18 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 		saveCandidateSolutionToFile sol;
 		let skipFitness = this#executeSUT () in
 		if skipFitness then (
-			sol#setFitness worstFitness false;
-			false
+			sol#setFitness worstFitness false
 		) else (
 			coveredNewBranches <- false;
 			let fitness,isIdeal = this#computeFitness currentEvaluations in
 			sol#setFitness fitness isIdeal;
-			coveredNewBranches
+			(*sol#print();*)
+			if logTestCases && coveredNewBranches then (
+				if isIdeal then
+					addSolutionToArchive ("target:"^(string_of_int targetStmtId)^","^(string_of_int targetIndexId)) sol
+				else
+					addSolutionToArchive ("collateral during:"^(string_of_int targetStmtId)^","^(string_of_int targetIndexId)) sol
+			)
 		)
 		
 	method compare (s1:candidateSolution) (s2:candidateSolution) = 

@@ -10,6 +10,8 @@ open HillClimbSearch
 open BaseObjFunc
 open BranchCoverageObjFunc
 open SolutionGenerator
+open Preconditions
+open ArrayInputs
 
 module Log = LogManager
 
@@ -17,6 +19,8 @@ let execOptsSutPath = ref ""
 let execOptsTargetId = ref (-1)
 let execOptsTargetIndex = ref (-1)
 let execOptsMaxEvals = ref 100000
+
+let execOptIgnoreCollateral = ref false
 
 let getSearchMethod (source:file) (drv:fundec) (fut:fundec) (search:string) = 
 	if search = "random" then
@@ -39,7 +43,12 @@ class branchCoverageGenerator (source:file) (drv:fundec) (fut:fundec) (search:st
 	
 	method private iterateOverIndices (sid:int) (currentIndx:int) (total:int) (saved:int)  = 
 		if currentIndx < total then (
-			let targetIndexCovered = objFunc#hasTargetBeenCovered fut.svar.vid sid currentIndx in
+			let targetIndexCovered = 
+				if not(!execOptIgnoreCollateral) then
+					objFunc#hasTargetBeenCovered fut.svar.vid sid currentIndx
+				else
+					false 
+			in
 			if not(targetIndexCovered) &&
 				(!execOptsTargetIndex = (-1) || (currentIndx = !execOptsTargetIndex)) then (
 				objFunc#initialize [] [sid;currentIndx];
@@ -50,7 +59,7 @@ class branchCoverageGenerator (source:file) (drv:fundec) (fut:fundec) (search:st
 				if not(success) then
 					failedOnce <- true;
 				let used = searchMethod#getUsedEvaluations() in
-				let saved' = !execOptsMaxEvals + saved - used in 
+				let saved' = 0(*!execOptsMaxEvals + saved - used*) in 
 				totalUsed <- (Int64.add totalUsed (Int64.of_int used));
 				this#iterateOverIndices sid (currentIndx + 1) total saved'
 			) else (
@@ -85,28 +94,67 @@ class branchCoverageGenerator (source:file) (drv:fundec) (fut:fundec) (search:st
 						objFunc#writeCoverageInfoToFile fut.svar.vid branchInfo resultsFile;
 					)
 				)
-				
+		
+	method private printResultToScreen (branchInfo:(int*int)list) (totalBranchCount:int) (totalFutCount:int) = 
+		let totalCovered, futCovered = (objFunc#getCoveredBranchCount fut.svar.vid (!execOptsTargetId) (!execOptsTargetIndex)) in
+		Log.log (Printf.sprintf "Covered %d out of %d total branches\n" totalCovered totalBranchCount);
+		match (!execOptsTargetId,!execOptsTargetIndex) with
+			| (-1),(-1) -> 	
+				Log.log (Printf.sprintf "Covered %d out of %d fut branches\n" futCovered totalFutCount)
+			| (-1), _ -> 
+				let targets = 
+					List.fold_left(
+						fun res (id,cnt) -> 
+							if !execOptsTargetIndex > cnt then res
+							else (
+								res + 1
+						  )
+					) 0 branchInfo
+				in
+				Log.log (Printf.sprintf "Covered %d out of %d target branches from fut\n" futCovered targets)
+			|  _, (-1) -> 
+				let targets = 
+					List.fold_left(
+						fun res (id,cnt) -> if id = !execOptsTargetId then cnt else res
+					) 0 branchInfo
+				in
+				Log.log (Printf.sprintf "Covered %d out of %d target branches from fut\n" futCovered targets)
+			| _,_ ->
+				if (objFunc#hasTargetBeenCovered fut.svar.vid !execOptsTargetId !execOptsTargetIndex) then
+					Log.log (Printf.sprintf "Covered target %d,%d\n" !execOptsTargetId !execOptsTargetIndex)
+				else
+					Log.log (Printf.sprintf "Failed to cover target %d,%d\n" !execOptsTargetId !execOptsTargetIndex)
+					
 	method start () = 
 		loadControlDependencies (ConfigFile.find Options.keyCfgInfo);
 		let totalBranchCount = countFileBranches source in
 		let totalFutCount, branchInfo = countFundecBranches fut in
 		this#iterateOverTargets branchInfo;
 		this#logResultsToCsvFile branchInfo;
-		let futCovered = (objFunc#getCoveredBranchCount fut.svar.vid) in
-		Log.log (Printf.sprintf "Covered %d out of %d total branches\n" (objFunc#getCoveredBranchCount (-1)) totalBranchCount);
-		Log.log (Printf.sprintf "Covered %d out of %d fut branches\n" futCovered totalFutCount)
+		(****)
+		this#printResultToScreen branchInfo totalBranchCount totalFutCount
 end
 
+let createTestCasesFromArchive (testdrv:fundec) (fut:fundec) = 
+	ignore(List.fold_left(
+		fun id (comment,sol) -> 
+			ignore(TestCaseWriter.saveCandidateSolution id sol comment testdrv fut);
+			(id + 1)
+	) 1 (!Solution.solutionArchive))
+	
 let mainExecute () = 	
-	let criterion = find ConfigFile.confKeyTDGCriterion in
-	let search = find ConfigFile.confKeyTDGMethod in
+	let criterion = ConfigFile.find Options.keyTDGCriterion in
+	let search = ConfigFile.find Options.keyTDGMethod in
 	let source = unmarshalSource (ConfigFile.find Options.keyBinInstrumentedSrouce) in
 	let drv = loadFundecFromFile (ConfigFile.find Options.keyDrvFundec) in
 	let fut = loadFundecFromFile (ConfigFile.find Options.keyFutFundec) in
 	
 	if criterion = "branch" then (
 		let testgen = new branchCoverageGenerator source drv fut search in
-		Preconditions.loadPreconditions();
+		loadBaseLvalsFromFile ();
+		loadPreconditionsFromFile();
+		loadArrayInputsFromFile ();
+		Log.saveLogConfigToFile();
 		testgen#start();
 		createTestCasesFromArchive drv fut
 	)

@@ -21,3 +21,9 @@ let compareObjVal (o1:objectiveValue) (o2:objectiveValue) =
 				else 0
 			)
 		| _,_ -> Log.warn "Trying to compare different types of objective value\n";0
+
+let fitness_to_string (v:objectiveValue) = 
+	match v with
+		| Simple(f) -> string_of_float f
+		| BranchCoverage(bo) -> 
+			Printf.sprintf "approach level=%d, branch distance=%.10f" bo.appLevel bo.branchDist

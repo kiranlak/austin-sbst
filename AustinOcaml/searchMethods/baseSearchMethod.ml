@@ -8,11 +8,6 @@ class virtual baseSearchMethod (source:file) (drv:fundec) (fut:fundec) = object(
 	val mutable maxEvaluations : int = 0
 	val mutable currentEvaluations : int = 0
 
-	val logTestCases = 
-		match (ConfigFile.hasKey Options.keyLogTestCases) with
-			| None -> false
-			| Some(status) -> status = "true"
-
 	method reset () = 
 		currentEvaluations <- 0;
 		Solution.reset()

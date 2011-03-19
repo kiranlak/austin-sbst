@@ -1,26 +1,11 @@
 (* Copyright: Kiran Lakhotia, University College London, 2011 *)
 open Cil
 
-(* config keys *)	
-let confKeyTDGMethod = "tdgSearchMethod"
-let confKeyTDGCriterion = "tdgCriterion"
-
-let confKeyCompiler = "cc"
-let confKeyCompilerIncl = "compilerIncludes"
-let confKeyCompilerOpts = "compilerOpts"
-let confKeyTargetMutants = "targetMutants"
-
 let confFile : (string, string) Hashtbl.t = Hashtbl.create 50
 
 let reset() = 
 	Hashtbl.clear confFile
-	
-let addDefaults = 
-	Hashtbl.add confFile confKeyCompiler "gcc";
-	Hashtbl.add confFile confKeyCompilerIncl "-I .";
-	Hashtbl.add confFile confKeyCompilerOpts "-P -E";
-	Hashtbl.add confFile confKeyTargetMutants "false"
-	
+		
 exception MissingConfigKey of string
 
 let delim = '='
@@ -89,5 +74,5 @@ let parse (file:string) =
 		);
 		close_in ic
 	) else 
-		failwith (Printf.sprintf "config file: %s not found\n" file);
+		failwith (Printf.sprintf "Config file: %s not found\n" file);
 		

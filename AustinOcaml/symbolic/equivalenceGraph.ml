@@ -12,15 +12,15 @@ exception Infeasible
 module IntSet = Set.Make (struct type t = int;; let compare = compare end)
 
 module EquivalenceNode = Set.Make(
-												struct 
-													type t = exp;; 
-													let compare e1 e2 = 
-														if compareExp (Expcompare.stripCastsDeepForPtrArith e1) (Expcompare.stripCastsDeepForPtrArith e2) then 0 else (
-															let s1 = Pretty.sprint 255 (Cil.d_exp()e1) in
-															let s2 = Pretty.sprint 255 (Cil.d_exp()e2) in
-															compare s1 s2
-														) 
-												end)
+struct 
+	type t = exp;; 
+	let compare e1 e2 = 
+		if Utils.compareExp (Expcompare.stripCastsDeepForPtrArith e1) (Expcompare.stripCastsDeepForPtrArith e2) then 0 else (
+			let s1 = Pretty.sprint 255 (Cil.d_plainexp()e1) in
+			let s2 = Pretty.sprint 255 (Cil.d_plainexp()e2) in
+			compare s1 s2
+		) 
+end)
 
 type eqNode = {id:int;mutable elements:EquivalenceNode.t;mutable edges:IntSet.t}
 
@@ -30,7 +30,7 @@ let eqGraph = ref []
 let reset() = 
 	uniqueID := 0;
 	eqGraph := []
-	
+		
 let emptyGraph () = eqGraph := []; uniqueID := 0
 let makeNode (e:exp) = 
 	incr uniqueID;
@@ -55,8 +55,6 @@ let findOrCreateContainingNode (e:exp) =
 	let e' = if isZero e then zero else (stripCasts e) in
 	match (tryFindContainingNode e') with
 		| None -> 
-			Log.debug (Printf.sprintf "Failed to find %s in graph\n"
-				(Pretty.sprint 255 (Cil.d_exp()e')));
 			let n = makeNode e' in
 			eqGraph := (n::(!eqGraph));
 			n
@@ -154,25 +152,11 @@ let rec findLvalConstsFromExp (e:exp) = (*SLOW*)
 	if (isConstant e) then
 		([], [e])
 	else (
-		((List.fold_left(
-			fun res (fo,lo,frame) -> 
-				(res @ (LvalHashtbl.fold(
-					fun lv symlv frameres -> 
-						if symlv.isInput then (
-							match symlv.content with
-								| SymEx(sex) -> 
-									(
-										match sex with
-											| CilExpr(e') -> 
-												if (compareExp e' e) then (lv::frameres)
-												else frameres
-											| _ -> frameres
-									)
-								| _ -> frameres
-						) else
-							frameres
-					)frame.state []))
-		) [] !symStackFrameItems),[])
+		((ExpHashtbl.fold(
+			fun key value res -> 
+				if (Utils.compareExp key e) then (key::res)
+				else res
+		)!state.s []),[])
 	)
 
 let rec prepareExprForGraph (e:exp) = 
@@ -185,7 +169,7 @@ let rec prepareExprForGraph (e:exp) =
 						| Neg -> Log.error (sprintf "Neg operator with pointer (%s)\n" (Pretty.sprint 255 (Cil.d_exp () e)))
 						| BNot -> Log.error (sprintf "BNot operator with pointer (%s)\n" (Pretty.sprint 255 (Cil.d_exp () e)))
 						| LNot -> 
-							propagateNegation e
+							Utils.propagateNegation e
 							(*(propagateNegation e')*)
 				)
 			| CastE(t, e') -> 
@@ -194,52 +178,32 @@ let rec prepareExprForGraph (e:exp) =
   ) else
 		e
 		
-let rec addExpressionToGraph (e:exp) (lhsAliaExpr:exp list) (rhsAliaExpr:exp list) = 
+let rec addExpressionToGraph (e:exp) = 
 	if (expDependsOnMem e) then (
 		(* for each e, find its lval alias from symbolic trace *)
 		(* in addition call findLvalConstsFromExp *)
 		match e with
 			| Const _ | Lval _ | AddrOf _ | StartOf _ -> 
-				List.iter(
-					fun e' -> handleNeOp e' zero
-				)(e::lhsAliaExpr)
+				handleNeOp e zero
 			| SizeOf _ | SizeOfE _ | SizeOfStr _ | AlignOf _ | AlignOfE _ -> 
-				List.iter(
-					fun e' -> handleNeOp (constFold true e') zero
-				)(e::lhsAliaExpr)
+				handleNeOp (constFold true e) zero
 			| UnOp(u, e', _) -> 
-				addExpressionToGraph (prepareExprForGraph e) lhsAliaExpr rhsAliaExpr
+				addExpressionToGraph (prepareExprForGraph e)
 			| BinOp(b, e1, e2, _) -> 
 				(
-					if not(isComparisonOp b) then (
+					if not(Utils.isComparisonOp b) then (
 						(* e != 0 *)
-						List.iter(
-							fun e' -> handleNeOp e' zero
-						)(e::lhsAliaExpr)
+						handleNeOp e zero
 					) else (
 						match b with
 							| Eq -> (* e1 == e2 *)
-								handleEqOp e1 e2;
-								List.iter(
-									fun e' -> handleEqOp e' e2
-								)lhsAliaExpr;
-								List.iter(
-									fun e' -> handleEqOp e1 e'
-								)rhsAliaExpr;
+								handleEqOp e1 e2
 							| Ne -> 
-								handleNeOp e1 e2;
-								List.iter(
-									fun e' -> handleNeOp e' e2
-								)lhsAliaExpr;
-								List.iter(
-									fun e' -> handleNeOp e1 e'
-								)rhsAliaExpr;
+								handleNeOp e1 e2
 							| _ -> Log.warn (sprintf "Ignoring BinOp %s in pointer constraint\r\n" (Pretty.sprint 255 (Cil.d_binop () b)));
 					)
 				)
 			| CastE(_, e') -> 
-				List.iter(
-					fun e'' -> handleNeOp (prepareExprForGraph e'') zero
-				)(e::lhsAliaExpr)
+				handleNeOp (prepareExprForGraph e) zero
 	)
 ;;

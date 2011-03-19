@@ -13,6 +13,7 @@ let initializeOcaml (out:string) (lib:string) =
 	addOptionKeysToConfig ();
 	let sol =  (loadCandidateSolutionFromFile ()) in
 	inputNodes := sol#getInputList();
+	Log.loadLogConfigFromFile();
 	Log.setLogChannelOpt 2
 ;;
 Callback.register "initializeOcaml" initializeOcaml;;

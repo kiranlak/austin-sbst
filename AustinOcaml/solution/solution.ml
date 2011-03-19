@@ -5,7 +5,7 @@ open Utils
 open BaseObjValue
 
 module Log = LogManager
-
+		
 let uniqueSolutionId = ref 0
 let uniqueNodeId = ref (-1)
 let getNextUniqueNodeId () = 
@@ -16,10 +16,6 @@ let getNextUniqueSolutionId () =
 	incr uniqueSolutionId;
 	!uniqueSolutionId
 		
-let reset () = 
-	uniqueSolutionId := 0;
-	uniqueNodeId := (-1)
-
 type intNode = 
 {
 	imin  : int64;
@@ -28,6 +24,8 @@ type intNode =
 }
 type floatNode = 
 {
+	fmin : float;
+	fmax : float;
 	mutable fval  : float;
 }
 type pointerNode = 
@@ -59,7 +57,7 @@ let rec cloneNode (n:baseNode) =
 and cloneInputNode (n:inputNode) = 
 	match n with
 		| IntNode(n') -> IntNode({imin=n'.imin;imax=n'.imax;ival=n'.ival})
-		| FloatNode(n') -> FloatNode({fval=n'.fval})
+		| FloatNode(n') -> FloatNode({fmin=n'.fmin;fmax=n'.fmax;fval=n'.fval})
 		| PointerNode(n') -> PointerNode({targetNodeTyp=n'.targetNodeTyp;targetNodeId=n'.targetNodeId;pointToNull=n'.pointToNull;takesAddrOf=n'.takesAddrOf;isPointerToArray=n'.isPointerToArray;firstArrayDim=n'.firstArrayDim})
 			
 let printNode (n:baseNode) = 
@@ -69,11 +67,11 @@ let printNode (n:baseNode) =
 				n.bid (Pretty.sprint 255 (Cil.d_lval () n.cilLval)) n'.ival
 				n'.imin n'.imax)
 		| FloatNode(n') -> 
-			Log.log (Printf.sprintf "%d - value: %s = %f\n"
-				n.bid (Pretty.sprint 255 (Cil.d_lval () n.cilLval)) n'.fval)
+			Log.log (Printf.sprintf "%d - value: %s = %.10f ([%.5f,%.5f])\n"
+				n.bid (Pretty.sprint 255 (Cil.d_lval () n.cilLval)) n'.fval n'.fmin n'.fmax)
 		| PointerNode(n') -> 
 			Log.log (Printf.sprintf "%d - %s:pointsToType=%s,tid=%d,isNull=%B,addrOf=%B\n"
-				n.bid (Pretty.sprint 255 (Cil.d_lval () n.cilLval)) 
+				n.bid (Pretty.sprint 255 (Cil.d_plainlval () n.cilLval)) 
 				(Pretty.sprint 255 (Cil.d_type () n'.targetNodeTyp))
 				n'.targetNodeId n'.pointToNull n'.takesAddrOf	
 				)
@@ -197,24 +195,13 @@ class candidateSolution = object(this)
 		try
 			Some(LvalHashtbl.find lvalNodeMappings l)
 		with
-			| Not_found -> None
-	
-	method tryFindNodeFromLvalName (l:lval) = 
-		match(this#tryFindNodeFromLval l) with
-			| None ->
-				let s1 = Pretty.sprint 255 (Cil.d_lval() l) in 
-				let rec search (nodes:baseNode list) = 
-					match nodes with
-						| [] -> None
-						| n::rem -> 
-							let s2 = Pretty.sprint 255 (Cil.d_lval() n.cilLval) in
-							if (compare s1 s2) = 0 then
-								Some(n)
-							else
-								search rem
-				in
-				search revInputList
-		| Some(n) -> Some(n)
+			| Not_found -> 
+				(
+					try
+						Some(LvalHashtbl.find lvalNodeMappings (normalizeArrayAccess l))
+					with
+						| Not_found -> None
+				)
 	
 	method tryFindNodeFromNodeId (id:int) = 
 		let rec searchList nodes = 
@@ -229,7 +216,7 @@ class candidateSolution = object(this)
 		searchList revInputList
 	
 	method findNodeIdFromLval (l:lval) = 
-		let nodeOpt = this#tryFindNodeFromLvalName l in
+		let nodeOpt = this#tryFindNodeFromLval l in
 		match nodeOpt with
 			| Some(n) -> n.bid
 			| _ -> Log.error (Printf.sprintf "Failed to find node for %s\n" (Pretty.sprint 255 (Cil.d_lval()l)))	
@@ -262,13 +249,7 @@ class candidateSolution = object(this)
 		LvalHashtbl.clear lvalNodeMappings
 	
 	method print () = 
-		let header = 
-			let prefix = "Solution " in
-			match fitness with
-				| Simple(sf) -> prefix^"(fitness = "^(string_of_float sf)^"):\n"
-				| BranchCoverage(bf) -> 
-					prefix^("(approach level = "^(string_of_int bf.appLevel)^", branchDist = "^(string_of_float bf.branchDist)^"):\n")
-		in
+		let header = "Solution "^(fitness_to_string fitness)^":\n" in
 		Log.log header;
 		List.iter(
 			fun node -> printNode node
@@ -280,8 +261,8 @@ let mkIntNode (min:int64) (max:int64) (value:int64) (l:lval) =
 	let n = IntNode({imin=min;imax=max;ival=value}) in
 	{bid=(getNextUniqueNodeId());cilLval=l;node=n;concreteVal=None}
 	
-let mkFloatNode (value:float) (l:lval) = 
-	let n = FloatNode({fval=value}) in
+let mkFloatNode (min:float) (max:float) (value:float) (l:lval) = 
+	let n = FloatNode({fmin=min;fmax=max;fval=value}) in
 	{bid=(getNextUniqueNodeId());cilLval=l;node=n;concreteVal=None}
 	
 let mkPtrNode (targetTyp:typ) (tid:int) (isNull:bool) (addrOf:bool) (isPtrToArray:bool) (firstDim:int) (l:lval) = 
@@ -300,3 +281,11 @@ let loadCandidateSolutionFromFile () : candidateSolution =
 	let sol = new candidateSolution in
 	sol#loadFromFile (ConfigFile.find Options.keyBinSolName);
 	sol
+
+let solutionArchive : (string * candidateSolution) list ref = ref []
+let addSolutionToArchive (comment:string) (sol:candidateSolution) = 
+	solutionArchive := ((comment, (cloneSolution sol))::!solutionArchive)
+		
+let reset () = 
+	uniqueSolutionId := 0;
+	uniqueNodeId := (-1)

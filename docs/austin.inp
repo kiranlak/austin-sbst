@@ -7,6 +7,9 @@ tdgCriterion = branch
 # Search Method (possible values are: random,hc,chc)
 tdgSearchMethod = chc
 
+# Number of decimal places to optimize for hc,chc
+hillClimberDecimalPlaces = 2
+
 # Log Keys (mandatory)
 logLevel = verbose
 logToScreen = true

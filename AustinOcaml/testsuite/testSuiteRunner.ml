@@ -75,8 +75,8 @@ let resetEvn() =
 	Symbolictrace.reset();
 	Preprocessor.reset();
 	Testdriver.reset(false);
-	SolutionGenerator.reset();
 	Solution.reset();
+	Solution.solutionArchive := [];
 	Cfginfo.reset();
 	EquivalenceGraph.reset();
 	Symbolic.reset();

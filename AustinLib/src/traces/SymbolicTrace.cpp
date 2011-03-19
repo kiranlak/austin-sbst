@@ -153,7 +153,7 @@ void GetCILValuesFromLvalBase(LvalBase* item, char targetAddress[50], long doubl
 		*fvalue = n->GetValue();
 	}
 	else
-		throw runtime_error("invalid type in GetCILValuesFromLvalBase");
+		throw runtime_error("Invalid type in GetCILValuesFromLvalBase");
 }
 LvalBase* GetLvalAndExpressionVector(unsigned int len, va_list args, vector<LvalBase*>& traceItems)
 {
@@ -182,7 +182,7 @@ LvalBase* GetLvalAndExpressionVector(unsigned int len, va_list args, vector<Lval
 			item = new LvalValue<void*>(address, offset, targetAddr, va_arg(args, void*));
 		}
 		else
-			throw runtime_error("unrecognized format string in Austin__SymLogStmt");
+			throw runtime_error("Unrecognized format string in Austin__SymLogStmt");
 
 		if(lhs == NULL)
 			lhs = item;

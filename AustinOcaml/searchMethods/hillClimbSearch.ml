@@ -7,6 +7,12 @@ open SolutionGenerator
 
 module Log = LogManager
 
+let precision = 
+	match (ConfigFile.hasKey Options.keyHillClimberDecimalPlaces) with
+		| None -> 0.01
+		| Some(places) -> 
+			10.0 ** (-. (float_of_string places))
+			
 class collectLvalFromExprVisitor (lv:lval list ref) (addr:lval list ref) = object(self)
 	inherit nopCilVisitor
 	
@@ -24,10 +30,7 @@ end
 
 class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 	inherit baseSearchMethod source drv fut as super
-	
-	val solGenerator = 
-		new solutionGenerator drv true
-			
+
 	val mutable init = true
 	val mutable targetId = 0
 	val mutable targetIndx = 0
@@ -44,9 +47,9 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 	val mutable numericNodeIndeces = []
 	
 	method initialize stringParas intParas = 
-		solGenerator#prepareTestDriver fut;
 		targetId <- (List.hd intParas);
-		targetIndx <- (List.hd (List.tl intParas))
+		targetIndx <- (List.hd (List.tl intParas));
+		initializePointers := true
 		
 	method private restart (full:bool) = 
 		direction <- -1;
@@ -89,8 +92,14 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 				else
 					_in.ival <- val'
 			| FloatNode(_fn) -> 
-				let delta = (float dir) *. 0.01 *. (2.0**(float patternMoves)) in
-				_fn.fval <- float_of_string (Printf.sprintf "%.2f" (_fn.fval +. delta))
+				let delta = (float dir) *. precision *. (2.0**(float patternMoves)) in
+				let val' = round (_fn.fval +. delta) precision in
+				if val' < _fn.fmin then
+					_fn.fval <- _fn.fmin
+				else if val' > _fn.fmax then
+					_fn.fval <- _fn.fmax
+				else
+					_fn.fval <- val'
 			| _ ->  Log.error "Wrong node type in numeric move\n"
 						
 	method requiresRestart () = 
@@ -120,22 +129,16 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 	method search (objFunc:baseObjFunc) = 
 		super#reset();
 		this#restart true;
-		currentSolution <- solGenerator#generateNewRandomSolution();
+		currentSolution <- generateNewRandomSolution();
 		this#makeNumTypeNodeList();
 		
 		let rec doSearch() = 
 			if currentEvaluations < maxEvaluations then (
 				currentEvaluations <- currentEvaluations + 1;
-				let saveNewTestCase = objFunc#evaluate currentSolution currentEvaluations in
+				objFunc#evaluate currentSolution currentEvaluations;
 				if init then (
 					bestSolution#init(currentSolution);
 					init <- false;
-				);
-				if logTestCases && saveNewTestCase then (
-					if currentSolution#isIdeal() then
-						addSolutionToArchive "target" currentSolution
-					else
-						addSolutionToArchive "collateral" currentSolution
 				);
 				if currentSolution#isIdeal() then (
 					bestSolution#init(currentSolution);
@@ -149,7 +152,7 @@ class hillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 							if this#requiresRestart() then (
 								Log.log "Random restart\n";
 								this#restart true;
-								currentSolution <- solGenerator#generateNewRandomSolution();
+								currentSolution <- generateNewRandomSolution();
 								this#makeNumTypeNodeList();
 							) else (
 								currentSolution#init(bestSolution);

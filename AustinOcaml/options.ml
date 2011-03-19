@@ -39,6 +39,7 @@ let keyBranchIds = "txtBranchIds"
 let keyInstrumentLog = "instrLog"
 let keyExecLog = "execLog"
 let keySUTLog = "sutLog"
+let keyLogConfig = "logConfig"
 
 let keyLogToScreen = "logToScreen"
 let keyLogToFile = "logToFile"
@@ -49,13 +50,23 @@ let keyLogTestCases = "logTestCases"
 let keySeeds = "rndSeeds"
 
 let keyPreconditionFile = "preconFile"
-
+let keyArrayFile = "arrayFile"
+let keyBaseLvalsFile = "baseLvals"
 
 let machineDependentPreamble = 
 	match Sys.word_size with
 		| 32 -> "extra/x86.c"
 		| _ -> "extra/x86_64.c"
 		
+let keyTDGMethod = "tdgSearchMethod"
+let keyTDGCriterion = "tdgCriterion"
+
+let keyCompiler = "cc"
+let keyCompilerIncl = "compilerIncludes"
+let keyCompilerOpts = "compilerOpts"
+
+let keyHillClimberDecimalPlaces = "hillClimberDecimalPlaces"
+
 let addOptionKeysToConfig () = 
 	add keySUTpreamble (Filename.concat !austinLibDir machineDependentPreamble);
 	add keyRenamedMain "orig_main";
@@ -72,7 +83,13 @@ let addOptionKeysToConfig () =
 	add keyInstrumentLog (mkFileName "instrumentation.log");
 	add keyExecLog (mkFileName "execution.log"); 
 	add keySUTLog (mkFileName "sut.log");
+	add keyLogConfig (mkFileName "log.config");
 	add keySeeds (mkFileName "randomNumberSeeds.txt");
 	add keyBranchTraceName (mkFileName "traceInfo.dat");
-	add keyPreconditionFile (mkFileName "precon.dat")
-;;	
+	add keyPreconditionFile (mkFileName "precon.dat");
+	add keyArrayFile (mkFileName "arrayFile.dat");
+	add keyBaseLvalsFile (mkFileName "baseLvals.dat");
+	add keyCompiler "gcc";
+	add keyCompilerIncl "-I .";
+	add keyCompilerOpts "-P -E"	
+;;

@@ -5,6 +5,14 @@
 	<storageModule moduleId="org.eclipse.cdt.core.settings">
 		<cconfiguration id="0.538716154">
 			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="0.538716154" moduleId="org.eclipse.cdt.core.settings" name="Default">
+				<macros>
+					<stringListMacro name="PATH" type="VALUE_TEXT_LIST">
+						<value name="/usr/bin"/>
+						<value name="/bin"/>
+						<value name="/usr/sbin"/>
+						<value name="/sbin"/>
+					</stringListMacro>
+				</macros>
 				<externalSettings/>
 				<extensions>
 					<extension id="org.eclipse.cdt.core.VCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>

@@ -23,6 +23,14 @@ let saveCandidateSolution (id:int) (sol : candidateSolution) (comment:string) (t
 	
 	testcaseFunc.slocals <- List.map(fun v -> v)testdrv.slocals;
 
+  let mkFreeStmt (l:lval) = 
+		let thn = 
+			mkBlock [mkStmtOneInstr (Call(None, freeExpr, [Lval(l)], locUnknown))]
+		in
+		let els = mkBlock [] in
+		let kind = If(Lval(l),thn,els,locUnknown) in
+		mkStmt kind
+	in
 	let assignValue (l:lval) (in_node:inputNode) = 
 		let getMallocType () = 
 			match unrollType (typeOfLval l) with
@@ -49,13 +57,15 @@ let saveCandidateSolution (id:int) (sol : candidateSolution) (comment:string) (t
 					[Set(l, (CastE(voidPtrType, Cil.zero)), locUnknown)]
 				else if _pn.targetNodeId = (-1) then (
 					let e = SizeOf(getMallocType ()) in
-					freelist := ((Call(None, freeExpr, [Lval(l)], locUnknown))::!freelist);
+					freelist := ((mkFreeStmt l)::!freelist);
 					mallocList := (!mallocList @ [Call(Some(l), mallocExpr, [e], locUnknown)]);
 					[]
 				) else (
 					if _pn.isPointerToArray then (
 						let e = BinOp(Mult, (integer _pn.firstArrayDim), SizeOf(getMallocType ()), uintType) in
-						freelist := ((Call(None, freeExpr, [Lval(l)], locUnknown))::!freelist);
+						
+						freelist := ((mkFreeStmt l)::!freelist);
+						
 						mallocList := (!mallocList @ [Call(Some(l), mallocExpr, [e], locUnknown)]);
 						[]
 					) else (
@@ -95,13 +105,13 @@ let saveCandidateSolution (id:int) (sol : candidateSolution) (comment:string) (t
 				(Cil.zero, [Call(None, (Lval(var fut.svar)), futArgs, locUnknown)])
 	in
 	let body = 
-		mkStmt (Instr((!mallocList @ assignments @ callToFut @ !freelist))) 
+		let p1 = (mkStmt (Instr((!mallocList @ assignments @ callToFut))))::(!freelist) in
+		if !hasReturn then
+			(p1 @ [(mkStmt (Return(Some(eRetVal), locUnknown)))])
+		else
+			p1
 	in
-	if !hasReturn then (
-		testcaseFunc.sbody <- (mkBlock [body;(mkStmt (Return(Some(eRetVal), locUnknown)))]);
-	) else (
-		testcaseFunc.sbody <- (mkBlock [body]);
-	);
+	testcaseFunc.sbody <- (mkBlock body);
 	let glob = GFun(testcaseFunc, locUnknown) in
 	output_string oc ("\r\n/* "^comment^" */\r\n");
 	output_string oc (Printf.sprintf "%s\r\n" (Pretty.sprint 255 (Cil.d_global () glob)));

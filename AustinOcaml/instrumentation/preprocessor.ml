@@ -4,6 +4,8 @@ open Rmtmps
 
 module Log = LogManager
 
+let addExplicitReturnStmt = ref false
+
 let convertInstrToStmt (source : file) = 
 	Ciltools.one_instruction_per_statement source
 
@@ -242,4 +244,48 @@ let renameMain (globals : global list) =
 				)
 	in
 	searchGlobals globals
+	
+class returnStmtVisitor (missingReturns:fundec list ref) = object
+	inherit nopCilVisitor
+	
+	val mutable currentFunc = dummyFunDec
+	val mutable hasReturn = false
+	
+	method vfunc (f:fundec) = 
+		match f.svar.vtype with
+			| TFun(TVoid _, _, _, _) -> 
+				hasReturn <- false;
+				ChangeDoChildrenPost(f,
+					fun f' -> 
+						if not(hasReturn) then 
+							missingReturns := (currentFunc::(!missingReturns));
+						f'
+				)
+			| _ -> SkipChildren
+	
+	method vstmt (s:stmt) =
+		if currentFunc = dummyFunDec || (startsWith "Austin__" currentFunc.svar.vname) then SkipChildren
+		else (
+			match s.skind with
+				| Return _ -> hasReturn <- true; SkipChildren
+				| _ -> DoChildren 
+		)
+end
+let insertExplicitReturnStatement (source:file) = 
+	if !addExplicitReturnStmt then (
+		let missing = ref [] in
+		let vis = new returnStmtVisitor missing in
+		visitCilFileSameGlobals vis source;
+		let rkind = Return(None, locUnknown) in
+		List.iter(
+			fun f -> 
+				let s = mkStmt rkind in
+				let new_body = 
+					match f.sbody.bstmts with
+						| [] -> (* empty function??*) [s]
+						| _ -> f.sbody.bstmts @ [s]
+				in
+				f.sbody.bstmts <- new_body
+		)!missing
+	)
 	

@@ -6,11 +6,28 @@ open Pretty
 let verbose = ref true
 let debug = ref false
 let logToScreen = ref true
-let logToFile = ref true
+let logToFile = ref false
 
 type logChannelType = {mutable oc:out_channel option}
 let logChannel = {oc=None}
 
+let saveLogConfigToFile() = 
+	let saved = (!verbose,!debug,!logToScreen,!logToFile) in
+	let outchan = open_out_bin (ConfigFile.find Options.keyLogConfig) in
+	Marshal.to_channel outchan saved [];
+	close_out outchan
+	
+let loadLogConfigFromFile() =
+	let fname = (ConfigFile.find Options.keyLogConfig) in
+	assert(Sys.file_exists fname);
+	let inchan = open_in_bin fname in
+  let _v,_d,_s,_f = (Marshal.from_channel inchan : (bool*bool*bool*bool)) in
+  close_in inchan;
+	verbose := _v;
+	debug := _d;
+	logToScreen := _s;
+	logToFile := _f
+	
 let setupLogLevels () =
 	let level = 
 		match (ConfigFile.hasKey Options.keyLogLevel) with

@@ -9,6 +9,20 @@ open Symbolic
 module EQ = EquivalenceGraph
 module Log = LogManager
 
+let precision = 
+	match (ConfigFile.hasKey Options.keyHillClimberDecimalPlaces) with
+		| None -> 0.01
+		| Some(places) -> 
+			10.0 ** (-. (float_of_string places))
+
+class containsNonInputLval (hasNonInput:bool ref) (definedLvals:lval list) = object
+	inherit nopCilVisitor 
+	method vlval (l:lval) = 
+		if List.for_all(fun l' -> not(Utils.compareLval l' l))definedLvals then (
+			hasNonInput := true;
+		);
+		SkipChildren
+end
 class collectLvalFromExprVisitor (lv:lval list ref) (addr:lval list ref) = object(self)
 	inherit nopCilVisitor
 	
@@ -26,10 +40,7 @@ end
 
 class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(this)
 	inherit baseSearchMethod source drv fut as super
-	
-	val solGenerator = 
-		new solutionGenerator drv false
-			
+				
 	val mutable init = true
 	val mutable targetId = 0
 	val mutable targetIndx = 0
@@ -48,9 +59,9 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 	val mutable numericNodeIndeces = []
 	
 	method initialize stringParas intParas = 
-		solGenerator#prepareTestDriver fut;
 		targetId <- (List.hd intParas);
-		targetIndx <- (List.hd (List.tl intParas))
+		targetIndx <- (List.hd (List.tl intParas));
+		initializePointers := false
 		
 	method private restart (full:bool) = 
 		direction <- -1;
@@ -68,12 +79,11 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 	
 	method private initializeSymbolicState () = 
 		Symbolic.reset();
-		symEnterFunctionSimple drv;
 		List.iter(
 			fun node -> 
-				updateStateEx node.cilLval (Some(fut)) true (SymEx(CilExpr(Lval(node.cilLval))))
+				Symbolic.assign node.cilLval (Lval(node.cilLval));
 		)(currentSolution#getRevInputList());
-		Symbolic.saveCurrentStateToFile (ConfigFile.find Options.keySymState)
+		Symbolic.saveCurrentStateToFile ()
 		
 	method private makeNumTypeNodeList () = 
 		let indx = ref (-1) in
@@ -105,8 +115,14 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 				else
 					_in.ival <- val'
 			| FloatNode(_fn) -> 
-				let delta = (float dir) *. 0.01 *. (2.0**(float patternMoves)) in
-				_fn.fval <- float_of_string (Printf.sprintf "%.2f" (_fn.fval +. delta))
+				let delta = (float dir) *. precision *. (2.0**(float patternMoves)) in
+				let val' = round (_fn.fval +. delta) precision in
+				if val' < _fn.fmin then
+					_fn.fval <- _fn.fmin
+				else if val' > _fn.fmax then
+					_fn.fval <- _fn.fmax
+				else
+					_fn.fval <- val'
 			| _ ->  Log.error "Wrong node type in numeric move\n"
 						
 	method requiresRestart () = 
@@ -139,16 +155,43 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 			(Pretty.sprint 255 (EQ.printGraph())));*)
 		let lvals = ref [] in
 		let addr = ref [] in
+		let definedLvals = List.map(fun n -> n.cilLval)(currentSolution#getRevInputList()) in
 		
-		let findNodeFromLvalName (l:lval) = 
-			match (currentSolution#tryFindNodeFromLvalName l) with
-				| None -> Log.error (Printf.sprintf "Failed to find %s in input node list\n" (Pretty.sprint 255 (Cil.d_lval () l)));
+		let getValidLvalsFromNode (n:EQ.EquivalenceNode.t) = 
+			lvals := [];
+			addr := [];
+			let vis = new collectLvalFromExprVisitor lvals addr in
+			List.iter(
+				fun el -> 
+					ignore(visitCilExpr vis el)
+			)(EQ.EquivalenceNode.elements n);
+			lvals := List.filter(
+				fun l -> 
+					let hasNonInput = ref false in
+					let vis2 = new containsNonInputLval hasNonInput definedLvals in
+					ignore(visitCilLval vis2 l);
+					not(!hasNonInput)		
+			)!lvals;
+			addr := List.filter(
+				fun l -> 
+					let hasNonInput = ref false in
+					let vis2 = new containsNonInputLval hasNonInput definedLvals in
+					ignore(visitCilLval vis2 l);
+					not(!hasNonInput)		
+			)!addr;
+		in
+		
+		let findNodeFromLval (l:lval) = 
+			match (currentSolution#tryFindNodeFromLval l) with
+				| None -> 
+					currentSolution#print();
+					Log.error (Printf.sprintf "Failed to find %s in input node list\n" (Pretty.sprint 255 (Cil.d_plainlval () l)));
 				|	Some(n) -> n
 		in
 		let setLvalsToNull (lvals:lval list) =
 			 List.iter(
 				fun l -> 
-					let node = findNodeFromLvalName l in
+					let node = findNodeFromLval l in
 					match node.node with
 						| PointerNode(pn) -> 
 							pn.targetNodeId <- (-1);
@@ -161,7 +204,7 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 		let setLvalsToTID (lvals:lval list) (node:baseNode) =
 			 List.iter(
 				fun l -> 
-					let n = findNodeFromLvalName l in
+					let n = findNodeFromLval l in
 					if n.bid <> node.bid then (
 						match n.node,node.node with
 							| PointerNode(pn),PointerNode(tpn) -> 
@@ -173,25 +216,16 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 					)
 			)lvals
 		in
-		let containsAnAddrOf (elements:exp list) =
-			if not(List.exists(fun e -> match (stripCasts e) with AddrOf _ -> true | _ -> false)elements) then (
-				List.exists (
-					fun e -> 
-						lvals := [];
-						addr := [];
-						let vis = new collectLvalFromExprVisitor lvals addr in 
-						ignore(visitCilExpr vis e);
-						(List.length !addr) <> 0
-				) elements
-			) else
-				true 
+		let containsAnAddrOf (n:EQ.EquivalenceNode.t) =
+			getValidLvalsFromNode n;
+			(List.length !addr) <> 0
 		in
 		let containsConstant (elements:exp list) =
 			List.filter(fun e -> isConstant e)elements
 		in
 		List.iter(
 			fun eqNode -> 
-				if (containsAnAddrOf (EQ.EquivalenceNode.elements eqNode.EQ.elements)) then (
+				if (containsAnAddrOf eqNode.EQ.elements) then (
 					(**TODO: addressOf *)
 					Log.unimp "AddrOf in EQ node\n"
 				) else (
@@ -199,35 +233,19 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 					if (List.length constants) > 0 then (
 						if not(isZero (List.hd constants)) then 
 							Log.unimp "Non-zero constant in EQ node\n";
-						EQ.EquivalenceNode.iter(
-							fun e ->
-								lvals := [];
-								addr := [];
-								let vis = new collectLvalFromExprVisitor lvals addr in 
-								ignore(visitCilExpr vis e);
-								setLvalsToNull (!lvals @ !addr);
-						)eqNode.EQ.elements
+						getValidLvalsFromNode eqNode.EQ.elements;
+						setLvalsToNull (!lvals @ !addr)
 					) else (
 						let nodeEdgeCnt = (EQ.IntSet.cardinal eqNode.EQ.edges) in
 						if nodeEdgeCnt = 0 ||
 							 (EQ.containsZeroNode eqNode) then (
-							EQ.EquivalenceNode.iter(
-								fun e ->
-									lvals := [];
-									addr := [];
-									let vis = new collectLvalFromExprVisitor lvals addr in 
-									ignore(visitCilExpr vis e);
-									setLvalsToNull (!lvals @ !addr);
-							)eqNode.EQ.elements
+							getValidLvalsFromNode eqNode.EQ.elements;
+							setLvalsToNull (!lvals @ !addr);
 						) else (
-							let e = EQ.EquivalenceNode.choose eqNode.EQ.elements in
-							lvals := [];
-							addr := [];
-							let vis = new collectLvalFromExprVisitor lvals addr in 
-							ignore(visitCilExpr vis e);
+							getValidLvalsFromNode eqNode.EQ.elements;
 							assert((List.length !lvals) > 0);
 							let l = List.hd !lvals in
-							let node = findNodeFromLvalName l in
+							let node = findNodeFromLval l in
 							(
 								match node.node with
 									| PointerNode(pn) -> 
@@ -237,30 +255,46 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 									| _ -> 
 										Log.warn (Printf.sprintf "Was expecting pointer (to assign malloc), but received %s (ignoring)\n" (Pretty.sprint 255 (Cil.d_type() (typeOfLval node.cilLval))))
 							);
-							EQ.EquivalenceNode.iter(
-								fun e ->
-									lvals := [];
-									addr := [];
-									let vis = new collectLvalFromExprVisitor lvals addr in 
-									ignore(visitCilExpr vis e);
-									setLvalsToTID !lvals node
-							)eqNode.EQ.elements
+							setLvalsToTID !lvals node
 						)
 					)
 				)
 		)!EQ.eqGraph
 		
-	method private makePointerMove (conj : (int*int*exp)) = 
+	method private makePointerMove (sconj : stmtConj) = 
 		(**************************)
-		let thrd (_,_,a) = a in
 		Log.log "Pointer move...";
-		let conjExpr = thrd conj in
-		Log.log (Printf.sprintf "\ntrying to solve inv of %s\n" (Pretty.sprint 255 (Cil.d_exp()conjExpr)));
-		let lhsExprAlia,rhsExprAlia = (*findPCConjunctAliaExpr conjExpr*) ([],[]) in
-		EQ.addExpressionToGraph (Symbolic.tryInvertOp conjExpr) lhsExprAlia rhsExprAlia;
+		let debug_str = ref "" in
+		(**TODO: stricly speaking, each atomicConditions is a || condition, so 
+it doesn't make sense to add all to the EQ graph. But since I'm no using the EQ for 
+arithmetic inputs this should be ok for now **)
+		List.iter(
+			fun aliaExprlist -> 
+				if List.length aliaExprlist > 0 then (
+					let toinvert = Utils.tryInvertOp (List.hd aliaExprlist) in
+					if !debug_str <> "" then
+						debug_str := (!debug_str)^" || ";
+						
+					debug_str := (!debug_str)^(Printf.sprintf "(%s" (Pretty.sprint 255 (Cil.d_exp()toinvert)));
+					EQ.addExpressionToGraph toinvert;
+					
+					debug_str := (!debug_str) ^ (List.fold_left(
+						fun str' aliaExpr -> 
+							EQ.addExpressionToGraph aliaExpr;
+							if str' = "" then 
+								Printf.sprintf " && %s" (Pretty.sprint 255 (Cil.d_exp()aliaExpr))
+							else
+								str'^" && "^(Printf.sprintf "%s" (Pretty.sprint 255 (Cil.d_exp()aliaExpr)))
+							
+					) "" (List.tl aliaExprlist));
+					
+					debug_str := (!debug_str)^") "
+				)
+		)(getStmtConditions sconj);
+		Log.debug (Printf.sprintf "\n\ntrying to satisfy:%s\n" !debug_str);
 		isPointerMove <- true;
 		this#trySolvePointerConstraints();
-		currentSolution <- (solGenerator#generateUpdatedSolution currentSolution);
+		currentSolution <- (generateUpdatedSolution currentSolution);
 		Log.log "done\n"
 			
 	method private doesConstraintRequireSolving (sid,index:int*int) = 
@@ -270,37 +304,36 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 		not(List.exists exists criticalEdges) && (List.exists notExists criticalEdges)
 	
 	method private requiresPointerMove () =
-		let pcFilename = (ConfigFile.find Options.keySymPath) in
-		assert(Sys.file_exists pcFilename);
-		Symbolic.loadPCfromFile pcFilename;
-			try
-				Some(List.find (
-					fun (sid,index,con) ->
-						(EQ.expDependsOnMem con) && (this#doesConstraintRequireSolving (sid,index))
-				)(List.rev Symbolic.pc.Symbolic.conjuncts))
-			with
-				| Not_found -> None
+		Symbolic.loadPathConditionfromFile ();
+		(*Symbolic.printPathCondition();*)
+		try
+			Some(List.find (
+				fun (sid,index,atomicList) ->
+					List.exists(
+						fun conlist ->
+							List.exists(
+								fun con ->  
+									(EQ.expDependsOnMem con) && (this#doesConstraintRequireSolving (sid,index))
+							)conlist
+					)atomicList
+			)(List.rev Symbolic.pc.Symbolic.conjuncts))
+		with
+			| Not_found -> None
 	
 	method search (objFunc:baseObjFunc) = 
 		super#reset();
 		this#restart true;
-		currentSolution <- solGenerator#generateNewRandomSolution();
+		currentSolution <- generateNewRandomSolution();
 		this#initializeSymbolicState();
 		this#makeNumTypeNodeList();
 		
 		let rec doSearch() = 
 			if currentEvaluations < maxEvaluations then (
 				currentEvaluations <- currentEvaluations + 1;
-				let saveNewTestCase = objFunc#evaluate currentSolution currentEvaluations in
+				objFunc#evaluate currentSolution currentEvaluations;
 				if init then (
 					bestSolution#init(currentSolution);
 					init <- false;
-				);
-				if logTestCases && saveNewTestCase then (
-					if currentSolution#isIdeal() then
-						addSolutionToArchive "target" currentSolution
-					else
-						addSolutionToArchive "collateral" currentSolution
 				);
 				if currentSolution#isIdeal() then (
 					bestSolution#init(currentSolution);
@@ -308,9 +341,9 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 				) else (
 					(
 						match (this#requiresPointerMove ()) with
-							| Some(conj) -> 
+							| Some(conjs) -> 
 								(
-									this#makePointerMove conj;
+									this#makePointerMove conjs;
 									this#initializeSymbolicState();
 									this#makeNumTypeNodeList();
 									isPointerMove <- true
@@ -329,7 +362,7 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 										if isPointerMove || this#requiresRestart() then (
 											Log.log "Random restart\n";
 											this#restart true;
-											currentSolution <- solGenerator#generateNewRandomSolution();
+											currentSolution <- generateNewRandomSolution();
 											this#initializeSymbolicState();
 											this#makeNumTypeNodeList();
 										) else (

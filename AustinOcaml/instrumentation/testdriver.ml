@@ -4,13 +4,14 @@ open Printf
 open Options
 open Utils
 
+open ArrayInputs
+
 module Log = LogManager
 
 let prototypes : (string, fundec) Hashtbl.t = Hashtbl.create 100000
 let globalVariables = ref []
 
 let inputVarinfos : varinfo list ref = ref []
-
 let globalsToIgnore : string list ref = ref ["stdin";"stdout";"stderr"]
 
 let loadGlobalsToIgnoreFromFile (fname:string) = 
@@ -26,7 +27,7 @@ let loadGlobalsToIgnoreFromFile (fname:string) =
 	  with End_of_file -> ()
 	);
 	close_in ic
-	
+
 let reset full = 
 	Hashtbl.clear prototypes;
 	globalVariables := [];
@@ -50,7 +51,7 @@ let rec typeToString (prefix : string) (t:typ) =
 		| TEnum(ei, _) -> prefix^ei.ename
 		| _ -> 
 			Log.unimp (sprintf "Unsupported input type (%s) %s\n" prefix (Pretty.sprint 255 (Cil.d_type () (unrollType t))))
-	
+		
 let rec removeAllConstAttributes (t:typ) = 
 	match t with
 		| TVoid(atts) -> TVoid(dropAttribute "const" atts)
@@ -152,7 +153,7 @@ let makeAustinPtrCall (l:lval) (argSize : exp) (argProc : exp) (argAddr : exp) (
 	f.svar.vstorage <- Extern;
 	Hashtbl.replace prototypes f.svar.vname f;
 	Call(Some(l), Lval((var f.svar)), [argSize;argProc;argAddr;argFunc], locUnknown)
-
+	
 let rec hasVarConstAttr (v:varinfo) = 
 	if (hasAttribute "const" v.vattr) then true
 	else (hasTypeConstAttr v.vtype)
@@ -285,7 +286,7 @@ and generateArray (t:typ) (base:typ) (d1:exp) (l:lval) (source:file) =
 						let v = makeFormalVar f ("d"^(string_of_int (!counter))) intType in
 						let dimVar = makeLocalVar f ("dim__"^v.vname) intType in
 						counter := (!counter) + 1;
-						let l' = Mem(BinOp(PlusPI, Lval(al), Lval((var dimVar)), (typeOf (Lval(al))))), NoOffset in
+						let l' = makeArrayAccess al (Lval((var dimVar))) in
 						
 						let body = mkLoops l' (d::sizeArgs) rem in
 						mkForIncr dimVar zero (Lval((var v))) one body
@@ -299,59 +300,84 @@ and generateArray (t:typ) (base:typ) (d1:exp) (l:lval) (source:file) =
 	)
 	
 and handleInputType (l:lval) (t:typ) (source:file) (containingFdec: fundec) = 
-	if (hasTypeConstAttr t) then []
-	else( 
-	match t with
-		| TNamed(ti, _) -> 
-			handleInputType l ti.ttype source containingFdec
-		| TInt(kind, _) -> [makeIntTypeCall kind l]
-		| TFloat(kind, _) -> [makeFloatTypeCall kind l]
-		| TPtr(ptype, _) -> 
-			if (isFunctionType (unrollType ptype)) then []
-			else [generatePointer (removeAllConstAttributes(unrollType t)) (removeAllConstAttributes ptype) l source]
-		| TArray(at, lengthO, _) -> 
-			(
-				(* generate tmp pointer and treat as array - F1*)
-				(* for i = 0 to length0 assign the return value of *)
-				(* F1 to l[i]*)
-				match lengthO with
-					| None -> 
-						Log.error (Printf.sprintf 
-							"Could not get length of array (in TArray) for %s, bailing out\n"
-							(Pretty.sprint 255 (Cil.d_lval () l)))
-					| Some(len) -> 
-						(
-							match isInteger (constFold true len) with
-								| None -> 
-									Log.error (Printf.sprintf 
-									"Array length = %s for %s is not an integer (in TArray), bailing out\n"
-									(Pretty.sprint 255 (Cil.d_exp () len))
-									(Pretty.sprint 255 (Cil.d_lval () l)));
-								| Some(ilen) -> 
-									let i32len = Int64.to_int ilen in
-									let rec mkStmtList pos res = 
-										if pos >= i32len then
-											res
-										else (
-											let lv = addOffsetLval (Index((integer pos),NoOffset)) l in
-											mkStmtList (pos + 1) (res @ (handleInputType lv (removeAllConstAttributes at) source containingFdec))
-										)
-									in
+	
+	let handleArrayInputType (al:lval) (at:typ) (lengthO:exp option) = 
+		(* generate tmp pointer and treat as array - F1*)
+		(* for i = 0 to length0 assign the return value of *)
+		(* F1 to l[i]*)
+		if not(isCompleteType_Austin at) then []
+		else(
+			match lengthO with
+				| None -> 
+					Log.error (Printf.sprintf 
+						"Could not get length of array (in TArray) for %s, bailing out\n"
+						(Pretty.sprint 255 (Cil.d_lval () al)))
+				| Some(len) -> 
+					(
+						match isInteger (constFold true len) with
+							| None -> 
+								Log.error (Printf.sprintf 
+								"Array length = %s for %s is not an integer (in TArray), bailing out\n"
+								(Pretty.sprint 255 (Cil.d_exp () len))
+								(Pretty.sprint 255 (Cil.d_lval () al)));
+							| Some(ilen) -> 
+								let i32len = Int64.to_int ilen in
+								let isPtrToArray = not(isArrayType (unrollType (typeOfLval al))) in
+								let rec mkStmtList pos res = 
+									if pos >= i32len then
+										res
+									else (
+										let lv = 
+											if not(isPtrToArray) then (
+												Utils.normalizeArrayAccess (addOffsetLval (Index((integer pos),NoOffset)) al)
+											) else (
+												makeArrayAccess al (integer pos)
+											)
+										in
+										mkStmtList (pos + 1) (res @ (handleInputType lv (removeAllConstAttributes at) source containingFdec))
+									)
+								in
+								if isPtrToArray then 
+									[generateArray (typeOfLval al) at (integer i32len) al source]
+								else
 									mkStmtList 0 []
-						)
+					)
 			)
-		| TComp(compI, _) -> 
-			(* l must be base *)
-			List.fold_left(
-				fun ins field -> 
-					let off = Field(field, NoOffset) in
-					let lv' = addOffsetLval off l in
-					(ins @ (handleInputType lv' (removeAllConstAttributes field.ftype) source containingFdec))
-			) [] compI.cfields
-		| TEnum(enumI, _) -> [makeIntTypeCall IInt l]
-		| _ -> 
-			Log.warn (sprintf "Ignoring input %s due to unsupported type %s (%s)\n" (Pretty.sprint 255 (Cil.d_lval () l)) (Pretty.sprint 255 (Cil.d_type () t)) containingFdec.svar.vname);
-			[] ) 
+	in
+	if (hasTypeConstAttr t) || not(isCompleteType_Austin t) then []
+	else( 
+		match (isArrayInput l) with
+			| Some(al,at,adim) -> handleArrayInputType al at (Some(adim))
+			| None -> 
+				(
+					match t with
+						| TNamed(ti, _) -> 
+							handleInputType l ti.ttype source containingFdec
+						| TInt(kind, _) -> [makeIntTypeCall kind l]
+						| TFloat(kind, _) -> [makeFloatTypeCall kind l]
+						| TPtr(ptype, _) -> 
+							if (isFunctionType (unrollType ptype)) || not(isCompleteType_Austin ptype) then []
+							else [generatePointer (removeAllConstAttributes(unrollType t)) (removeAllConstAttributes ptype) l source]
+						| TArray(at, lengthO, _) -> 
+							handleArrayInputType l at lengthO
+						| TComp(compI, _) -> 
+							(* l must be base *)
+							List.fold_left(
+								fun ins field -> 
+									let off = Field(field, NoOffset) in
+									let lv' = addOffsetLval off l in
+									match (isArrayField field) with
+										| Some(al,at,adim) -> 
+											(ins @ (handleArrayInputType lv' at (Some(adim))))
+										| None ->
+											(ins @ (handleInputType lv' (removeAllConstAttributes field.ftype) source containingFdec))
+							) [] compI.cfields
+						| TEnum(enumI, _) -> [makeIntTypeCall IInt l]
+						| _ -> 
+							Log.warn (sprintf "Ignoring input %s due to unsupported type %s (%s)\n" (Pretty.sprint 255 (Cil.d_lval () l)) (Pretty.sprint 255 (Cil.d_type () t)) containingFdec.svar.vname);
+							[] 
+				)
+		)
 
 let callAustinClearWorkItems () = 
 	let clrF = emptyFunction "Austin__ClearWorkItems" in
@@ -367,7 +393,7 @@ class isDefinedVisitor (globVar:varinfo) (res:bool ref) (locals:varinfo list) = 
 	method vinst (i:instr) = 
 		match i with
 			| Set(l,_,_) -> 
-				if (Utils.compareLvalByName (var globVar) l) 
+				if (Utils.compareLval (var globVar) l) 
 					&& not(this#isLocalVariable ())then (
 					res := true;
 					SkipChildren
@@ -378,7 +404,7 @@ class isDefinedVisitor (globVar:varinfo) (res:bool ref) (locals:varinfo list) = 
 					match lo with
 						| None -> DoChildren
 						| Some(l) -> 
-							if (Utils.compareLvalByName (var globVar) l) 
+							if (Utils.compareLval (var globVar) l) 
 								&& not(this#isLocalVariable ()) then (
 								res := true;
 								SkipChildren
@@ -448,53 +474,19 @@ let getGlobalInputs (source:file) =
 	)source.globals
 
 let explicitArrayConversion (vars:varinfo list) =
-	let tryExtractInt (a:attribute) =
-		match a with
-			| Attr(_, aplist) ->
-				try
-					let ap = List.find(fun ap' -> match ap' with AInt(i) -> true | _ -> false)aplist in
-					match ap with
-						| AInt(i) -> i
-						| _ -> 0
-				with
-					| Not_found -> 0   
-	in
-	let rec isArrayType (t:typ) =
-		match t with
-			| TPtr(pt,attrs) -> 
-				(
-					match (Utils.tryGetAttribute "arraylen" attrs) with
-						| None -> 
-							(
-								match (tryGetAttribute "austin__array" attrs) with
-									| None -> (false,t,0)
-									| Some(a) -> (true,pt,(tryExtractInt a))
-							)
-						| Some(a) -> (true,pt,(tryExtractInt a))
-				)
-			| TNamed(tn,attrs) -> 
-				(
-					match (Utils.tryGetAttribute "arraylen" attrs) with
-						| None -> 
-							(
-								match (tryGetAttribute "austin__array" attrs) with
-									| None -> isArrayType tn.ttype
-									| Some(a) -> (true,t,(tryExtractInt a))
-							)
-						| Some(a) -> (true,t,(tryExtractInt a))
-				)
-			| _ -> (false,t,0) 
-	in
 	List.map(
 		fun v -> 
-			let isArray,baseType,len = isArrayType v.vtype in
-			if isArray then (
-				v.vtype <- TArray(baseType, Some(integer len), []);
-			);
-			v
+			match (isArrayInput (var v)) with
+				| None -> v
+				| Some(al,at,adim) -> 
+					v.vtype <- TArray(at, Some(adim), []);
+					v
 	)vars
 		
 let createTestDriver (fut:fundec) (source : file) = 
+	
+	collectArrayInputsForFunction fut;
+	
 	let drv = emptyFunction "Austin__drv" in
 	setFunctionTypeMakeFormals drv (TFun(voidType, Some [], false, []));
 	
@@ -518,7 +510,7 @@ let createTestDriver (fut:fundec) (source : file) =
 					) else v
 				in
 				inputVarinfos := v::(!inputVarinfos);
-				
+				SolutionGenerator.baseLvals := ((var v)::(!SolutionGenerator.baseLvals));
 				(ins @ (handleInputType (var v') (removeAllConstAttributes v'.vtype) source fut))
 		) [] (explicitArrayConversion (globals @ fut.sformals))
 	in
@@ -529,6 +521,11 @@ let createTestDriver (fut:fundec) (source : file) =
 	in
 	drv.sbody <- mkBlock [(mkStmt bodyInstr)];
 	Hashtbl.replace prototypes drv.svar.vname drv;
+	
+	saveArrayInputsToFile ();
+	SolutionGenerator.baseLvals := (List.rev !SolutionGenerator.baseLvals);
+	SolutionGenerator.saveBaseLvalsToFile ();
+	
 	drv
 	
 let addAustinFunctions (source : file) =

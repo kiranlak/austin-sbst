@@ -3,8 +3,6 @@ open Cil
 
 module Log = LogManager
 
-let b = Printexc.record_backtrace true
-
 let convertDotToPng (fileName : string) = 
 	let cmd = "dot -Tpng "^fileName^".dot > "^fileName^".png" in
 	Sys.command cmd
@@ -40,8 +38,6 @@ let loadFundecFromFile (filename : string) =
   close_in inchan;
 	f
 		
-let austinAttributers = ["austin__input"; "austin__array"]
-
 let tryGetAttribute (name : string) (attr : attributes) = 
 	try
 		let a = 
@@ -96,60 +92,123 @@ let rec tryFindFundecFromName (source : file) (name : string) =
 	in
 	walkGlobals source.globals
 
+class lvalExpVisitor (todo) = object
+	inherit nopCilVisitor 
+	method vlval(l:lval) = 
+		ChangeTo (todo l) (*(normalizeArrayAccess l)*)
+end
+
+let makeArrayAccess (l:lval) (index:exp) = 
+	let start = mkAddrOrStartOf l in
+	let addition = BinOp(IndexPI, start, index, (typeOf start)) in
+	mkMem addition NoOffset
+	
+let rec normalizeArrayAccessEx (e:exp) = 
+	let vis = new lvalExpVisitor normalizeArrayAccess in
+	visitCilExpr vis e
+and normalizeArrayAccess ((lh,off):lval) =
+	match off with
+		| Index(e,off') ->
+			(
+				let l', _ = removeOffsetLval (lh,off) in
+				makeArrayAccess l' e
+			) 
+		| _ -> (lh,off)
+				
 let rec compareExp (e1: exp) (e2: exp) : bool =
   (*log "CompareExp %a and %a.\n" d_plainexp e1 d_plainexp e2; *)
   e1 == e2 ||
   match e1, e2 with
-  | Lval lv1, Lval lv2
-  | StartOf lv1, StartOf lv2
-  | AddrOf lv1, AddrOf lv2 -> compareLval lv1 lv2
-  | BinOp(bop1, l1, r1, _), BinOp(bop2, l2, r2, _) ->
-      bop1 = bop2 && compareExp l1 l2 && compareExp r1 r2
-  | CastE(t1, e1), CastE(t2, e2) ->
-      (compareTypes t1 t2) && compareExp e1 e2
-  | _ -> begin
-      match isInteger (constFold true e1), isInteger (constFold true e2) with
-        Some i1, Some i2 -> i1 = i2
-      | _ -> false
-    end		
-and compareTypes (t1 :typ) (t2:typ) = 
-	if t1 == t2 then true 
-	else (
-		let s1 = Pretty.sprint 255 (Cil.d_type() t1) in
-		let s2 = Pretty.sprint 255 (Cil.d_type() t2) in
-		(compare s1 s2) = 0
-	)	
-and compareOffset (off1: offset) (off2: offset) : bool =
-	match off1, off2 with
-	| Field (fld1, off1'), Field (fld2, off2') ->
-			(compareFields fld1 fld2) && compareOffset off1' off2'
-			(*fld1 == fld2 && compareOffset off1' off2'*)
-	| Index (e1, off1'), Index (e2, off2') ->
-	    compareExp e1 e2 && compareOffset off1' off2'
-	| NoOffset, NoOffset -> true
-	| _ -> false
-and compareFields (fld1:fieldinfo) (fld2:fieldinfo) = 
-	fld1 == fld2 ||
-	(fld1.fname = fld2.fname && fld1.fcomp.cname = fld2.fcomp.cname 
-		&& (compareTypes fld1.ftype fld2.ftype) && fld1.fbitfield == fld2.fbitfield)
-			
+		| Lval lv1, StartOf lv2
+		| StartOf lv1, Lval lv2 -> 
+			compareLval lv1 lv2 
+	  | Lval lv1, Lval lv2
+	  | StartOf lv1, StartOf lv2
+	  | AddrOf lv1, AddrOf lv2 -> compareLval lv1 lv2
+	  | BinOp(bop1, l1, r1, _), BinOp(bop2, l2, r2, _) ->
+	      bop1 = bop2 && compareExp l1 l2 && compareExp r1 r2
+	  | CastE(t1, e1), CastE(t2, e2) ->
+	    	compareType t1 t2 && compareExp e1 e2
+	  | _ -> begin
+	      match isInteger (constFold true e1), isInteger (constFold true e2) with
+	        Some i1, Some i2 -> i1 = i2
+	      | _ -> false
+	    end
+and compareType (t1:typ) (t2:typ) : bool = 
+	t1 == t2 ||
+	match t1,t2 with
+		| TVoid _,TVoid _ -> true
+		| TInt(ikind1,_),TInt(ikind2,_) -> ikind1 = ikind2
+		| TFloat(fkind1,_),TFloat(fkind2,_) -> fkind1 = fkind2
+		| TPtr(pt1,_),TPtr(pt2,_) -> compareType pt1 pt2
+		| TArray(at1,eo1,_),TArray(at2,eo2,_) -> 
+			let eomatch = 
+				match eo1,eo2 with
+					| Some(e1),Some(e2) -> compareExp e1 e2
+					| None,None -> true
+					| _,_ -> false
+			in
+			eomatch && compareType at1 at2 
+		| TNamed(ti1,_),TNamed(ti2,_) -> 
+			ti1.tname = ti2.tname && 
+			compareType ti1.ttype ti2.ttype && 
+			ti1.treferenced == ti2.treferenced
+		| TComp(ci1,_),TComp(ci2,_) -> compareCompInfo ci1 ci2
+		| TEnum(ei1,_),TEnum(ei2,_) -> compareEnumInfo ei1 ei2
+		| _,_ -> false
+and compareCompInfo (ci1:compinfo) (ci2:compinfo) = 
+	ci1 == ci2 || (
+		ci1.cstruct == ci2.cstruct && 
+		ci1.cname   =  ci2.cname   && 
+		ci1.ckey    == ci2.ckey    &&
+		(List.length ci1.cfields) == (List.length ci2.cfields) && 
+		not(List.exists2(fun f1 f2 -> 
+			f1.fname <> f2.fname)ci1.cfields ci2.cfields)  &&
+		ci1.cdefined == ci2.cdefined &&
+		ci1.creferenced == ci2.creferenced 
+	) 
+and compareFieldInfo (fi1:fieldinfo) (fi2:fieldinfo) = 
+	fi1 == fi2 || (
+		fi1.fcomp.cname = fi2.fcomp.cname &&
+		fi1.fname       = fi2.fname       &&
+		compareType fi1.ftype fi2.ftype   &&
+		fi1.fbitfield   = fi2.fbitfield   &&
+		fi1.floc        = fi2.floc		
+	)
+and compareEnumInfo (ei1:enuminfo) (ei2:enuminfo) = 
+	ei1 == ei2 || (
+		ei1.ename = ei2.ename &&
+		(List.length ei1.eitems) == (List.length ei2.eitems) && 
+		not(List.exists2(fun (n1,v1,_) (n2,v2,_) -> n1 <> n2 || not(compareExp v1 v2))ei1.eitems ei2.eitems) &&
+		ei1.ereferenced == ei2.ereferenced && 
+		ei1.ekind = ei2.ekind
+	)
+and compareVarinfo (vi1:varinfo) (vi2:varinfo) = 
+	vi1 == vi2 || (
+		vi1.vname = vi2.vname &&
+		compareType vi1.vtype vi2.vtype &&
+		vi1.vstorage = vi2.vstorage &&
+		vi1.vglob   == vi2.vglob &&
+		vi1.vinline == vi2.vinline &&
+		vi1.vdecl = vi2.vdecl &&
+		vi1.vid == vi2.vid &&
+		vi1.vaddrof == vi2.vaddrof &&
+		vi1.vreferenced == vi2.vreferenced
+	)
 and compareLval (lv1: lval) (lv2: lval) : bool =
+  let rec compareOffset (off1: offset) (off2: offset) : bool =
+    match off1, off2 with
+    | Field (fld1, off1'), Field (fld2, off2') -> 
+        compareFieldInfo fld1 fld2 && compareOffset off1' off2'
+    | Index (e1, off1'), Index (e2, off2') ->
+        compareExp e1 e2 && compareOffset off1' off2'
+    | NoOffset, NoOffset -> true
+    | _ -> false
+  in
   lv1 == lv2 ||
   match lv1, lv2 with
   | (Var vi1, off1), (Var vi2, off2) ->
-      (compareVarinfo vi1 vi2) && compareOffset off1 off2
-  | (Mem e1, off1), (Mem e2, off2) ->
-      compareExp e1 e2 && compareOffset off1 off2
-  | _ -> false
-and compareVarinfo (vi1:varinfo) (vi2:varinfo) : bool = 
-	vi1 == vi2 ||
-	vi1.vid == vi2.vid && (compare vi1.vname vi2.vname) = 0
-	
-let compareLvalByName (lv1: lval) (lv2: lval) : bool =
-	lv1 == lv2 ||
-  match lv1, lv2 with
-  | (Var vi1, off1), (Var vi2, off2) ->
-      (compare vi1.vname vi2.vname) = 0 && compareOffset off1 off2
+      compareVarinfo vi1 vi2 && compareOffset off1 off2
   | (Mem e1, off1), (Mem e2, off2) ->
       compareExp e1 e2 && compareOffset off1 off2
   | _ -> false
@@ -163,6 +222,9 @@ let isVarargFunc (f:fundec) =
 		| TFun(_, _, vararg, _) -> vararg
 		| _ -> false
 
+let isComparisonOp (b : binop) =
+  match b with | Lt | Gt | Le | Ge | Eq | Ne -> true | _ -> false
+	
 class findArrayLengthLvalVis (vref:varinfo ref) (target : string) = object(this)
 	inherit nopCilVisitor
 	
@@ -206,34 +268,7 @@ and isPointerDeref (l:lval) =
 			else true
 		| Mem e, NoOffset -> true
 		| _ -> false
-
-let isArray (t:typ) (source:file) = 
-	let getArrayLengthAsExpr (a:attribute) = 
-		match a with
-			| Attr(_, paras) -> tryGetArrayLengthFromParas paras source
-	in
-	let findLengthFromAttributes (attrs:attribute list) = 
-		let ca = tryGetAttribute "arraylen" attrs in
-		match ca with
-			| None -> 
-				(
-					match (tryGetAttribute "austin__array" attrs) with
-						| None -> (false, zero)
-						| Some(a) -> getArrayLengthAsExpr a
-				)
-			| Some(a) -> getArrayLengthAsExpr a
-	in
-	match (unrollType t) with
-		| TArray(_, eo, attrs) -> 
-			(
-				match eo with
-					| None -> findLengthFromAttributes attrs
-					| Some(e) -> (true, e)
-			)
-		| TPtr(_,attrs) -> 
-			findLengthFromAttributes attrs
-		| _ -> (false, zero)
-							
+						
 let rec getBits lo = match lo with
 	| NoOffset -> None
   | Field(fi,NoOffset) -> fi.fbitfield
@@ -286,7 +321,15 @@ let rec isUnsignedType (t:typ) =
 		| TPtr(pt, _) -> isUnsignedType pt
 		| TArray(at, _, _) -> isUnsignedType at
 		| _ -> false
-		
+	
+let rec isCompleteType_Austin t =
+  match unrollType t with
+  | TArray(t, None, _) -> false
+  | TArray(t, Some z, _) when isZero z -> false
+  | TComp (comp, _) -> (* Struct or union *)
+	  comp.cdefined && List.for_all (fun fi -> isCompleteType fi.ftype) comp.cfields
+  | _ -> true
+	 	
 let ikindToString (kind : ikind) = 
 	match kind with
 		| IChar -> "Char"
@@ -308,44 +351,6 @@ let fkindToString (kind : fkind) =
 		| FDouble -> "Double"
 		| FLongDouble -> "LongDouble"	
 
-class removeAustinAttributesVisitor = object(this)
-	inherit nopCilVisitor
-	
-	method private dropAttr (attr:attributes) = 
-		dropAttributes (austinAttributers) attr
-		
-	method vvdec (v:varinfo) = 
-		v.vattr <- this#dropAttr v.vattr;
-		DoChildren
-		
-	method vvrbl (v:varinfo) = 
-		v.vattr <- this#dropAttr v.vattr;
-		DoChildren
-	
-	method vtype (t:typ) = 
-		match t with
-			| TVoid(attr) -> ChangeTo (TVoid(this#dropAttr attr))
-			| TInt(kind, attr) -> ChangeTo (TInt(kind,(this#dropAttr attr)))
-			| TFloat(kind, attr) -> ChangeTo (TFloat(kind,(this#dropAttr attr)))
-			| TPtr(pt, attr) -> 
-				ChangeTo (TPtr(pt,(this#dropAttr attr)))
-				(*ChangeDoChildrenPost(TPtr(pt,(this#dropAttr attr)), (fun t' -> t'))*)
-			| TArray(at, eo, attr) -> 
-				ChangeTo (TArray(at,eo,(this#dropAttr attr)))
-				(*ChangeDoChildrenPost(TArray(at,eo,(this#dropAttr attr)), (fun t' -> t'))*)
-			| TFun(rt, args, varg, attr) -> 
-				ChangeTo (TFun(rt,args,varg,(this#dropAttr attr)))
-				(*ChangeDoChildrenPost(TFun(rt,args,varg,(this#dropAttr attr)), (fun t' -> t'))*)
-			| TNamed(ti, attr) -> 
-				ChangeDoChildrenPost(TNamed(ti,(this#dropAttr attr)), (fun t' -> t'))
-			| TComp(tcomp, attr) -> 
-				ChangeTo (TComp(tcomp,(this#dropAttr attr)))
-				(*ChangeDoChildrenPost(TComp(tcomp,(this#dropAttr attr)), (fun t' -> t'))*)
-			| TEnum(tenum, attr) -> 
-				ChangeTo (TEnum(tenum,(this#dropAttr attr)))
-				(*ChangeDoChildrenPost(TEnum(tenum,(this#dropAttr attr)), (fun t' -> t'))*)
-			| TBuiltin_va_list(attr) -> ChangeTo (TBuiltin_va_list(this#dropAttr attr))	
-end
 let invertRelBinaryOp (b:binop) = 
 	match b with
 		| Lt -> Ge
@@ -421,7 +426,7 @@ let reapplyCasts (e:exp) (revCasts:typ list) =
 	
 let addrAndBitOffset ((lh,lo) : lhost * offset) = 
   
-	if isBitfield lo then begin
+	if isBitfield lo then (
     let baseLval, trimmedOffset = removeOffsetLval (lh, lo) in
 		let addrOf = mkAddrOrStartOf baseLval in
 		let offset,width = 
@@ -433,7 +438,9 @@ let addrAndBitOffset ((lh,lo) : lhost * offset) =
 					(integer o), (integer w) 
 		in
 		(addrOf, offset, width)
-  end else ((mkAddrOrStartOf (lh,lo)), zero, (integer (bitsSizeOf (typeOfLval (lh,lo)))))
+  ) else (
+		(mkAddrOrStartOf (lh,lo)), zero, (integer (bitsSizeOf (typeOfLval (lh,lo))))
+	)
 
 let removeDefaultCase (cases : stmt list) = 
 	let rec hasCaseLabel (labels : label list) =
@@ -505,43 +512,26 @@ let vassert (cond) (msg:string) =
 		Log.vassert msg;
 	assert(cond)
 		
-class printVIDvisitor = object(this)
-	inherit nopCilVisitor 
-	method vfunc (f:fundec) = 
-		Log.log (Printf.sprintf "current function:%s\n" f.svar.vname);
-		DoChildren
-	
-	method vvdec (v:varinfo) = 
-		Log.log (Printf.sprintf "%s decl has id %d\n" v.vname v.vid);
-		DoChildren
-			
-	method vvrbl (v:varinfo) = 
-		Log.log (Printf.sprintf "%s has id %d\n" v.vname v.vid);
-		DoChildren
-end
-let printExpVIDs (e:exp) = 
-	let vis = new printVIDvisitor in
-	ignore(visitCilExpr vis e)
-	
-let printSourceVIDs (source:file) = 
-	let vis = new printVIDvisitor in
-	visitCilFileSameGlobals vis source
-	
+let rec tryInvertOp (e : exp) =
+  match e with
+  | BinOp (b, e1, e2, t) ->
+      let b' = invertRelBinaryOp b in
+			BinOp (b', e1, e2, t)
+  | UnOp (u, e', t) ->
+      (match u with | LNot -> e' | _ -> BinOp (Eq, e, zero, t))
+	| CastE(t, e') -> mkCast (tryInvertOp e') t
+	| Lval _ | StartOf _  -> BinOp (Eq, e, zero, typeOf e)
+	| _ -> e
+			 
 module LvalHashtbl = Hashtbl.Make(
 struct
 	type t = lval
 	let equal lv1 lv2 = (compareLval lv1 lv2)
-	let hash lv = Hashtbl.hash lv
+	let hash lv = Hashtbl.hash (Pretty.sprint 255 (Cil.d_lval()lv))
 end)
-module LvalByNameHashtbl = Hashtbl.Make(
-struct
-	type t = lval
-	let equal lv1 lv2 = (compareLvalByName lv1 lv2)
-	let hash lv = Hashtbl.hash lv
-end)	
 module ExpHashtbl = Hashtbl.Make(
 struct
 	type t = exp
 	let equal e1 e2 = (compareExp e1 e2)
-	let hash e = Hashtbl.hash e
+	let hash e = Hashtbl.hash (Pretty.sprint 255 (Cil.d_exp()e))
 end)
