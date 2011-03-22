@@ -4,7 +4,12 @@ open Solution
 
 let flags = [Open_creat;Open_append;Open_text]
 let perm = 0o755 
-	
+
+let protos : (string, bool) Hashtbl.t = Hashtbl.create 10
+
+let added (f:fundec) = 
+	Hashtbl.mem protos f.svar.vname
+
 let mallocExpr = 
 	let v = makeVarinfo false "malloc" (TFun(voidPtrType, Some["size", uintType, []], false, [])) in
 	Lval(var v)
@@ -12,7 +17,11 @@ let mallocExpr =
 let freeExpr = 
 	let v = makeVarinfo false "free" (TFun(voidType, Some["size", voidPtrType, []], false, [])) in
 	Lval(var v)
-		
+	
+let fut_prototyp_toString (f:fundec) = 
+	Hashtbl.add protos f.svar.vname true;
+	Printf.sprintf "%s\n" (Pretty.sprint 255 (Cil.d_global() (GVarDecl(f.svar, locUnknown))))
+				
 let saveCandidateSolution (id:int) (sol : candidateSolution) (comment:string) (testdrv:fundec) (fut:fundec) = 
 	let oc = open_out_gen flags perm (ConfigFile.find Options.keyTestCaseFile) in
 	let testcaseFunc = emptyFunction (Printf.sprintf "%s_testcase_%d" fut.svar.vname id) in
@@ -113,6 +122,8 @@ let saveCandidateSolution (id:int) (sol : candidateSolution) (comment:string) (t
 	in
 	testcaseFunc.sbody <- (mkBlock body);
 	let glob = GFun(testcaseFunc, locUnknown) in
+	if not(added fut) then 
+		output_string oc (fut_prototyp_toString fut);
 	output_string oc ("\r\n/* "^comment^" */\r\n");
 	output_string oc (Printf.sprintf "%s\r\n" (Pretty.sprint 255 (Cil.d_global () glob)));
 	close_out oc;

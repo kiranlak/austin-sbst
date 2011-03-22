@@ -73,7 +73,7 @@ let addOptionKeysToConfig () =
 	add keyDrvFundec (mkFileName "drv.dat");
 	add keyFutFundec (mkFileName "fut.dat");
 	add keyBinSolName (mkFileName "camlSolution.dat");
-	add keyTestCaseFile (mkFileName "testCases.txt");
+	add keyTestCaseFile (mkFileName "testCases.c");
 	add keyInstrumentedSource (mkFileName "austin_instrumented.c");
 	add keyBinInstrumentedSrouce (mkFileName "austin_instrumented.dat");
 	add keyCfgInfo (mkFileName "cfginfo.dat");

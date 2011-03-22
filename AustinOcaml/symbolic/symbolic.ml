@@ -62,7 +62,7 @@ let unassign (l:lval) (_state: symbolic_state) =
 let assign (l:lval) (e:exp) = 
 	let e' = rewriteExpression e in
 	if (isExpUndefined e') then (
-		Log.log (Printf.sprintf "not updating lval %s because %s is considered undefined\n"
+		Log.debug (Printf.sprintf "not updating lval %s because %s is considered undefined\n"
 			(Pretty.sprint 255 (Cil.d_lval()l))
 			(Pretty.sprint 255 (Cil.d_exp()e')));
 		unassign l !state

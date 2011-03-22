@@ -55,6 +55,7 @@ let main () =
 		; ("-maxEvals", Arg.Int(fun i -> execOptsMaxEvals:=i), "set maximum number of fitness evaluations to use")
 		; ("-ignoreCollateral", Arg.Set execOptIgnoreCollateral, "attempt each branch individually, even if it has been covered collaterally already")
 		; ("", Arg.Unit(fun() -> ()), "Other Options:")
+		; ("-seed",Arg.Int(fun i -> AustinRand.setRandomSeed i), "set a random number seed") 
 		; ("-keep", Arg.Set keepOps, "keep logical operators")
 		; ("-printCFG", Arg.String(fun s -> insOptFutName:=s; printCFG := true), "<name of function> - print the control flow graph")
     ]
