@@ -13,14 +13,14 @@ hillClimberDecimalPlaces = 2
 # Log Keys (mandatory)
 logLevel = verbose
 logToScreen = true
-logCsvResults = false
-logTestCases = true
+logCsvResults = true
+logTestCases = false
 logToFile = false
 
 # path to AustinLib folder
-austinLib = /Users/kiran/workspace/austin-sbst/AustinLib/
+austinLib = /home/kiran/workspace/austin-sbst/AustinLib/
 
 # Output Base Dir
-austinOut = /Users/kiran/workspace/austin-sbst/out/
+austinOut = /home/kiran/workspace/Austin/AustinCpp/out/
 
 

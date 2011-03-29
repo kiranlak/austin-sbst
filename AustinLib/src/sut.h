@@ -43,6 +43,7 @@ void Austin__Assume__Array(unsigned int, ...);
 void Austin__ClearWorkItems();
 
 void Austin__Free(void*);
+void* Austin__Malloc(size_t);
 void* Austin__Realloc(void*, size_t);
 
 double Austin__GetPODNode(void*, int, int);

@@ -1436,38 +1436,44 @@ extern int fdatasync (int __fildes);
 extern char *ctermid (char *__s) __attribute__ ((__nothrow__));
 
 void Austin__drv();
+
+extern void Austin__Debug(char*);
 extern void Austin__Setup(int, char**);
 extern void Austin__Teardown();
 extern void Austin__Assert(int);
 extern void Austin__Raise(int);
-extern void Austin__ClearWorkItems();
 extern void Austin__Assume(unsigned int, ...);
 extern void Austin__Assume__Init(unsigned int, ...);
 extern void Austin__Assume__Array(unsigned int, ...);
+
+extern void Austin__ClearWorkItems();
+
+extern void Austin__Free(void*);
+extern void* Austin__Malloc(size_t);
+extern void* Austin__Realloc(void*, size_t);
+
 jmp_buf __AUSTIN__exit_testobject;
 volatile sig_atomic_t __AUSTIN__FATAL = 0;
 volatile sig_atomic_t __AUSTIN__TIMEOUT = 0;
 volatile sig_atomic_t __AUSTIN__IGNORETIMEOUT = 0;
 static void Austin__catch_alarm(int sig)
 {
- if(!__AUSTIN__IGNORETIMEOUT)
- {
-  if(__AUSTIN__TIMEOUT)
-  {
-   Austin__Raise(sig);
-  }
-  __AUSTIN__TIMEOUT = 1;
-  longjmp(__AUSTIN__exit_testobject, sig);
- }
+	if(!__AUSTIN__IGNORETIMEOUT)
+	{
+		if(!__AUSTIN__TIMEOUT)
+		{
+			__AUSTIN__TIMEOUT = 1;
+			longjmp(__AUSTIN__exit_testobject, sig);
+		}
+	}
 }
 static void Austin__catch_errors(int sig)
 {
- if(__AUSTIN__FATAL)
- {
-  Austin__Raise(sig);
- }
- __AUSTIN__FATAL = 1;
- longjmp(__AUSTIN__exit_testobject, sig);
+	if(!__AUSTIN__FATAL)
+	{
+		__AUSTIN__FATAL = 1;
+		longjmp(__AUSTIN__exit_testobject, sig);
+	}
 }
 void Austin__InstallSigHandler()
 {

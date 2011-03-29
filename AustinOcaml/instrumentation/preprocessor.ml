@@ -169,7 +169,10 @@ class removeFunctionsVisitor (source:file) = object(this)
 								match fv with
 									| Var v,_ -> 
 										(
-											if (compare v.vname "realloc") = 0 then (
+											if (compare v.vname "malloc") = 0 then (
+												let i' = this#mkCall "Austin__Malloc" (typeOf f) lo args loc in
+												ChangeTo [i']
+											)else if (compare v.vname "realloc") = 0 then (
 												let i' = this#mkCall "Austin__Realloc" (typeOf f) lo args loc in
 												ChangeTo [i']
 											)else if (compare v.vname "free") = 0 then (

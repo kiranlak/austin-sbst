@@ -307,6 +307,11 @@ extern "C" void Austin__Free(void* mem)
 	assert(solManager != NULL);
 	solManager->memManager.FreeMalloc(mem);
 }
+extern "C" void* Austin__Malloc(size_t size)
+{
+	assert(solManager != NULL);
+	return solManager->memManager.AddMalloc(size);
+}
 extern "C" void* Austin__Realloc(void* mem, size_t size)
 {
 	assert(solManager != NULL);
