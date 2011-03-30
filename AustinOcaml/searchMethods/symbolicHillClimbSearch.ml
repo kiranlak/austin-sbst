@@ -243,19 +243,24 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 							setLvalsToNull (!lvals @ !addr);
 						) else (
 							getValidLvalsFromNode eqNode.EQ.elements;
-							assert((List.length !lvals) > 0);
-							let l = List.hd !lvals in
-							let node = findNodeFromLval l in
-							(
-								match node.node with
-									| PointerNode(pn) -> 
-										pn.targetNodeId <- (-1);
-										pn.pointToNull <- false;
-										pn.takesAddrOf <- false
-									| _ -> 
-										Log.warn (Printf.sprintf "Was expecting pointer (to assign malloc), but received %s (ignoring)\n" (Pretty.sprint 255 (Cil.d_type() (typeOfLval node.cilLval))))
-							);
-							setLvalsToTID !lvals node
+							(**)
+							(* this can happen if you have a global var G that's initialized, thus not part*)
+							(* of input and a constraint T != G *)
+							(* assert((List.length !lvals) > 0);*)
+							if(List.length !lvals) > 0 then (
+								let l = List.hd !lvals in
+								let node = findNodeFromLval l in
+								(
+									match node.node with
+										| PointerNode(pn) -> 
+											pn.targetNodeId <- (-1);
+											pn.pointToNull <- false;
+											pn.takesAddrOf <- false
+										| _ -> 
+											Log.warn (Printf.sprintf "Was expecting pointer (to assign malloc), but received %s (ignoring)\n" (Pretty.sprint 255 (Cil.d_type() (typeOfLval node.cilLval))))
+								);
+								setLvalsToTID !lvals node
+							)
 						)
 					)
 				)

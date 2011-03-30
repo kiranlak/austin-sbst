@@ -40,6 +40,7 @@ void MemoryManager::RemoveMalloc(void* mem)
 		if(*it == mem)
 		{
 			this->mallocs.erase(it);
+			free(mem);
 			return;
 		}
 	}
@@ -49,7 +50,6 @@ void MemoryManager::FreeMalloc(void* mem)
 	if(mem != NULL)
 	{
 		RemoveMalloc(mem);
-		free(mem);
 	}
 }
 void MemoryManager::FreeMallocs()
@@ -199,7 +199,7 @@ extern "C" void Austin__Setup(int argc, char** argv)
 	traceManager->CreateAllTraces();
 	InitializeOcamlRuntime(outDir, libDir);
 	/**TODO: add alarm timeout when executing sut */
-	//alarm(sutTimeout);
+	alarm(10);
 }
 extern "C" void Austin__Teardown()
 {

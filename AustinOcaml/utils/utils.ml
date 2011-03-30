@@ -99,7 +99,12 @@ class lvalExpVisitor (todo) = object
 end
 
 let makeArrayAccess (l:lval) (index:exp) = 
-	let start = mkAddrOrStartOf l in
+	let start = 
+		if (isPointerType (typeOfLval l)) then 
+			Lval(l)
+		else
+			mkAddrOrStartOf l 
+	in
 	let addition = BinOp(IndexPI, start, index, (typeOf start)) in
 	mkMem addition NoOffset
 	
