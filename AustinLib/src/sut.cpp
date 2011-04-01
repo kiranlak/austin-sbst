@@ -199,7 +199,7 @@ extern "C" void Austin__Setup(int argc, char** argv)
 	traceManager->CreateAllTraces();
 	InitializeOcamlRuntime(outDir, libDir);
 	/**TODO: add alarm timeout when executing sut */
-	alarm(10);
+	//alarm(5);
 }
 extern "C" void Austin__Teardown()
 {

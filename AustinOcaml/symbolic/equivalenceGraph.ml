@@ -77,6 +77,9 @@ let handleEqOp (e1:exp) (e2:exp) =
 	let n2 = findOrCreateContainingNode e2 in
 	(* n1 and n2 must not have an edge *)
 	if IntSet.mem n2.id n1.edges || IntSet.mem n1.id n2.edges then (
+		Log.debug (Printf.sprintf "%s = %s is infeasible\n"
+			(Pretty.sprint 255 (Cil.d_exp()e1))
+			(Pretty.sprint 255 (Cil.d_exp()e2)));
 		raise Infeasible
 	)	else (
 		(* merge elements into n3*)
@@ -92,6 +95,9 @@ let handleNeOp (e1:exp) (e2:exp) =
 	let n2 = findOrCreateContainingNode e2 in
 	(* n1 and n2 must not be the same node *)
 	if n1.id = n2.id then (
+		Log.debug (Printf.sprintf "%s != %s is infeasible\n"
+			(Pretty.sprint 255 (Cil.d_exp()e1))
+			(Pretty.sprint 255 (Cil.d_exp()e2)));
 		raise Infeasible
 	)	else (
 		n1.edges <- IntSet.add n2.id n1.edges;

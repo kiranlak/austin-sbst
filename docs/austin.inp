@@ -21,6 +21,6 @@ logToFile = false
 austinLib = /home/kiran/workspace/austin-sbst/AustinLib/
 
 # Output Base Dir
-austinOut = /home/kiran/workspace/Austin/AustinCpp/out/
+austinOut = /home/kiran/workspace/Austin/AustinTest/out/
 
 

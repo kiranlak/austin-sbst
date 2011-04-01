@@ -132,8 +132,21 @@ let getStmtConditions (_,_,con) = con
 
 let pc = {conjuncts = [];pathExpression = one}
 
+let isUniqueStmtConjExpr (_,_,atomic) = 
+	let f1 = List.flatten atomic in
+	not(List.exists(
+		fun (_,_,atomic') -> 
+			let f2 = List.flatten atomic' in
+			if (List.length f1) <> (List.length f2) then false
+			else ( 
+				List.exists2( fun e1 e2 -> Utils.compareExp e1 e2 ) f1 f2
+			)
+	)pc.conjuncts)
+	
 let updatePathCondition (conj:stmtConj)  = 
-	pc.conjuncts <- (pc.conjuncts @ [conj])
+	if isUniqueStmtConjExpr conj then (
+		pc.conjuncts <- (pc.conjuncts @ [conj])
+	)
 	
 let printPathCondition () =
 	let concatenateAtomicConditions (conditions:exp list) = 

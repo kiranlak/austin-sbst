@@ -151,7 +151,7 @@ class symbolicHillClimbSearch (source:file) (drv:fundec) (fut:fundec) = object(t
 	
 	method private trySolvePointerConstraints () = 
 		(* iterate over all nodes in the EQ and instantiate them*)
-		(*Log.log (Printf.sprintf "graph before move:\n%s\n"
+		(*Log.debug (Printf.sprintf "graph before move:\n%s\n"
 			(Pretty.sprint 255 (EQ.printGraph())));*)
 		let lvals = ref [] in
 		let addr = ref [] in
@@ -281,6 +281,7 @@ arithmetic inputs this should be ok for now **)
 						debug_str := (!debug_str)^" || ";
 						
 					debug_str := (!debug_str)^(Printf.sprintf "(%s" (Pretty.sprint 255 (Cil.d_exp()toinvert)));
+
 					EQ.addExpressionToGraph toinvert;
 					
 					debug_str := (!debug_str) ^ (List.fold_left(
