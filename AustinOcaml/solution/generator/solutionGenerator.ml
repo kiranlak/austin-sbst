@@ -83,16 +83,10 @@ let makeFloatNode (l:lval) =
 			| Some(_min),Some(_max) -> 
 				AustinRand.nextFloat ~lower:_min _max
 			| Some(_min),None -> 
-				if _min > 0.0 then 
-					AustinRand.nextFloat ~lower:_min 1.0
-				else
-					gaussian 0.0 1.0
+				AustinRand.nextFloat ~lower:_min max
 			| None, Some(_max) -> 
-				if _max < 1.0 then 
-					AustinRand.nextFloat ~lower:0.0 _max
-				else
-					gaussian 0.0 1.0
-			| None, None -> gaussian 0.0 1.0
+				AustinRand.nextFloat ~lower:min _max
+			| None, None -> AustinRand.nextFloat ~lower:min max
 	in
 	mkFloatNode min max value l
 	
