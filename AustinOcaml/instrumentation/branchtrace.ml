@@ -262,7 +262,10 @@ class branchDistanceVisitor (fut:fundec) = object(this)
 		match s.skind with
 			| If(e, thn, els, loc) ->
 				let e' = propagateNegation e in
-				Hashtbl.replace branchInfos s.sid e';
+				
+				(* use the original condition (e) rather than the one with negations removed (e.g. e') *)
+				Hashtbl.replace branchInfos s.sid e;
+				
 				this#instrumentIfStatement s.sid e' thn els;
 				DoChildren
 			| Switch(e, _,cases,_) -> 

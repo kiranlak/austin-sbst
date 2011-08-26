@@ -236,54 +236,28 @@ class branchCoverageObjFunc (pathToSut:string) = object(this)
 		) 
 	method private executeSUT () = 
 		Log.log "Executing SUT...\n";
-		let pid = fork () in
-		if pid = 0 then (
-			let args = Array.make 4 "" in
-			Array.set args 0 (Options.keyAustinLibDir);
-			Array.set args 1 (!austinLibDir);
-			Array.set args 2 (Options.keyAustinOutDir);
-			Array.set args 3 (!austinOutDir);
-			execv pathToSut args	
-		) else if pid < 0 then (
-			raise Not_forked
-		) else (
-			let (_,status) = waitpid [] pid in
-			match status with
-				| WEXITED(code) -> 
-					Log.log (Printf.sprintf "Done SUT (exit code = %d)\n" code);
-					if code = 255 then (
-						Log.warn "Precondition violation\n";
-						sutException <- true;
-						true
-					) else if code = 254 then (
-						Log.warn "Initialization condition violation\n";
-						sutException <- true;
-						true
-					) else if code = 0 then (
-						(* OK *)
-						sutException <- false;
-						false
-					) else (
-						(* give penalty *)
-						sutException <- true;
-						false
-					)
-				| WSIGNALED(signal) | WSTOPPED(signal) -> 
-					(
-						sutException <- true;
-						if signal == Sys.sigalrm then (
-							Log.warn "SUT timeout signal\n"
-						) else if signal == Sys.sigabrt then (
-							Log.warn "SUT abort signal\n"
-						) else if signal == Sys.sigsegv then (
-							Log.warn (Printf.sprintf "SUT segfault (%d)\n" signal)
-						) else (
-							Log.warn (Printf.sprintf 
-										"Signal handling in branch objective function:%d\n" signal);
-						);
-						false
-					)
-		)
+		let cmd = pathToSut^" "^Options.keyAustinLibDir^" "^(!austinLibDir)^" "^(Options.keyAustinOutDir)^" "^(!austinOutDir) in
+		let code = Sys.command cmd in
+		Log.log (Printf.sprintf "Done SUT (exit code = %d)\n" code);
+		match code with
+			| 0 -> 
+				sutException <- false;
+				false
+			| 255 -> 
+				Log.warn "Precondition violation\n";
+				sutException <- true;
+				true
+			| 254 -> 
+				Log.warn "Initialization condition violation\n";
+				sutException <- true;
+				true
+			| _ -> 
+				if code = 14 then
+					Log.warn "SUT timeout signal\n"
+				else if code = 6 then
+					Log.warn "SUT abort signal\n";
+				sutException <- true;
+				false
 		
 	method private removeTraceFiles () = 
 		let fnames = 

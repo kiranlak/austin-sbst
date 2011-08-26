@@ -14,7 +14,7 @@ hillClimberDecimalPlaces = 2
 logLevel = verbose
 logToScreen = true
 logCsvResults = true
-logTestCases = false
+logTestCases = true 
 logToFile = false
 
 # path to AustinLib folder
